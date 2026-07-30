@@ -44,6 +44,11 @@ function playerCell(p) {
   return `<span class="player">${esc(p.name)} <small>${esc(p.team)} · ${esc(p.position)} · ${money(p.price)}</small></span>`;
 }
 
+// A small "lock into draft" button for table rows.
+function lockBtn(p) {
+  return `<button class="mini-lock" title="Lock into your draft" data-id="${p.id}" data-name="${esc(p.name)}" data-team="${esc(p.team)}" data-pos="${esc(p.position)}" data-price="${p.price}">🔒</button>`;
+}
+
 function gainPill(net) {
   const cls = net > 0 ? 'pos' : net < 0 ? 'neg' : '';
   const sign = net > 0 ? '+' : '';
@@ -129,9 +134,9 @@ function renderTransfers(a) {
       <div class="card">
         <h2>${pos} watchlist</h2>
         <div class="table-scroll"><table>
-          <thead><tr><th>Player</th><th class="num">Proj (3GW)</th><th class="num">xGI/90</th><th class="num">Value</th><th class="num">Owned</th></tr></thead>
+          <thead><tr><th>Player</th><th class="num">Proj (3GW)</th><th class="num">xGI/90</th><th class="num">Value</th><th class="num">Owned</th><th></th></tr></thead>
           <tbody>${players.map((p) => `<tr>
-            <td>${playerCell(p)}</td><td class="num">${p.projNext3}</td><td class="num">${p.xgi90 != null ? p.xgi90.toFixed(2) : '—'}</td><td class="num">${p.value}</td><td class="num">${p.selectedBy}%</td>
+            <td>${playerCell(p)}</td><td class="num">${p.projNext3}</td><td class="num">${p.xgi90 != null ? p.xgi90.toFixed(2) : '—'}</td><td class="num">${p.value}</td><td class="num">${p.selectedBy}%</td><td class="num">${lockBtn(p)}</td>
           </tr>`).join('')}</tbody>
         </table></div>
       </div>`).join('');
@@ -362,10 +367,29 @@ function renderLockedChips() {
   );
 }
 
+// Toast for feedback when locking from other tabs.
+function toast(msg) {
+  let t = $('#toast');
+  if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+// Shared lock action — used by the search box and the ＋ buttons in tables.
+function lockPlayerObj(p, { notify = false } = {}) {
+  if (!p || p.id == null) return;
+  if (lockedPlayers.some((x) => x.id === p.id)) { if (notify) toast(`${p.name} is already locked`); return; }
+  if (lockedPlayers.length >= 15) { if (notify) toast('Squad is full (15 locked)'); return; }
+  lockedPlayers.push({ id: p.id, name: p.name, team: p.team, position: p.position, price: p.price });
+  renderLockedChips();
+  if (notify) toast(`🔒 Locked ${p.name} — build in the Draft tab`);
+}
+
 function addLock() {
   const val = $('#lock-input').value.trim().toLowerCase();
   if (!val) return;
-  // Exact datalist match first, else best prefix match on name.
   let p = playerByLabel.get(val);
   if (!p) {
     for (const [label, pl] of playerByLabel) {
@@ -373,12 +397,23 @@ function addLock() {
     }
   }
   if (!p) return;
-  if (lockedPlayers.some((x) => x.id === p.id) || lockedPlayers.length >= 15) return;
-  lockedPlayers.push(p);
+  lockPlayerObj(p);
   $('#lock-input').value = '';
-  renderLockedChips();
 }
 $('#lock-add').addEventListener('click', addLock);
+
+// Lock straight from any table row that carries a .mini-lock button (Stats / Transfers).
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.mini-lock');
+  if (!btn) return;
+  lockPlayerObj({
+    id: Number(btn.dataset.id),
+    name: btn.dataset.name,
+    team: btn.dataset.team,
+    position: btn.dataset.pos,
+    price: parseFloat(btn.dataset.price),
+  }, { notify: true });
+});
 $('#lock-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addLock(); } });
 
 function lockNote(d) {
@@ -406,6 +441,24 @@ async function buildDraft(randomize = false) {
     $('#draft-content').innerHTML = `<div class="card"><div class="error-box">Couldn't build the squad: ${esc(e.message)}</div></div>`;
   }
 }
+// Load the manager's current FPL squad and lock it in — start from your real team, then
+// unlock individual players to let the optimiser suggest replacements.
+async function loadMyTeam() {
+  if (!store.teamId) { toast('Set your Team ID in Setup first'); return; }
+  toast('Loading your team…');
+  try {
+    const data = await (await fetch(`/api/myteam?teamId=${encodeURIComponent(store.teamId)}`)).json();
+    if (!data.found) { toast(data.reason || 'No saved team yet'); return; }
+    lockedPlayers.length = 0;
+    for (const p of data.players) lockedPlayers.push(p);
+    renderLockedChips();
+    toast(`Loaded your GW${data.gw} squad — unlock any player to get swap ideas`);
+    buildDraft(false);
+  } catch (e) {
+    toast('Could not load your team');
+  }
+}
+$('#load-team').addEventListener('click', loadMyTeam);
 $('#draft-build').addEventListener('click', () => buildDraft(false));
 $('#draft-random').addEventListener('click', () => buildDraft(true));
 // Build once the first time the Draft tab is opened, and load the player index for locking.
@@ -439,12 +492,14 @@ async function loadStats(metric) {
       <td class="num">${money(p.price)}</td>
       <td class="num"><strong>${p.value}</strong></td>
       <td class="num muted">${(p.minutes || 0).toLocaleString()}'</td>
+      <td class="num">${lockBtn(p)}</td>
     </tr>`).join('');
 
     content.innerHTML = `<div class="card">
       <h2>${esc(data.label)} — top players</h2>
+      <p class="hint">🔒 lock a player straight into your draft.</p>
       <div class="table-scroll"><table>
-        <thead><tr><th class="num">#</th><th>Player</th><th class="num">Price</th><th class="num">${esc(data.label)}</th><th class="num">Mins</th></tr></thead>
+        <thead><tr><th class="num">#</th><th>Player</th><th class="num">Price</th><th class="num">${esc(data.label)}</th><th class="num">Mins</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
     </div>`;

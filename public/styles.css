@@ -162,6 +162,15 @@ button.ghost {
 .locked-chip button { background: none; border: none; color: var(--pl-magenta); cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 4px; }
 .lock-note { font-size: .82rem; color: var(--text-dim); margin-top: 6px; }
 .lock-warn { color: var(--pl-magenta); }
+.mini-lock { background: none; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: .85rem; padding: 3px 7px; line-height: 1; }
+.mini-lock:hover { border-color: var(--pl-magenta); }
+#toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
+  background: var(--pl-purple); color: #fff; padding: 10px 16px; border-radius: 10px;
+  font-size: .88rem; font-weight: 600; box-shadow: 0 6px 20px rgba(0,0,0,.3);
+  opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 100;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .inline-field span { display: block; font-size: .8rem; color: var(--text-dim); margin-bottom: 4px; font-weight: 600; }
 .inline-field input, .inline-field select {
   padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px;
