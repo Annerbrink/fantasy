@@ -11,6 +11,7 @@ import { chipAdvice } from './chips.js';
 import { analyseRivals, picksToPlayerIds } from './rivals.js';
 import { priceTrends } from './prices.js';
 import { suggestChipPlan, validateChipPlan, normalizeChipPlan } from './chip-plan.js';
+import { promotedInfo } from './expert-notes.js';
 
 // `data` bundles the raw FPL responses. `entry`, `entryHistory`, `picks`, `standings` and
 // `rivalPicks` are optional — the engine degrades gracefully (pre-season, or no team set).
@@ -90,12 +91,21 @@ export function buildAdvice(data) {
   const dgwBgwSeason = detectDgwBgw(fixtures, bootstrap.teams, targetGw, seasonHorizon);
   const attackSeason = gameweekAttackIndex(fixtures, bootstrap.teams, targetGw, seasonHorizon);
 
-  // Weakest teams by overall strength — a proxy for newly-promoted / soft opponents to
-  // target with the captaincy and Triple Captain.
+  // Soft opponents to target with the captaincy and Triple Captain: the newly-promoted sides
+  // plus the weakest teams by overall strength. Each gets a softness score so the softest
+  // fixture wins — Hull (by far the weakest promoted side in the underlying data) ranks top.
   const teamStrength = (t) => (t.strength_overall_home || 0) + (t.strength_overall_away || 0);
-  const weakTeamIds = new Set(
+  const bottomFourIds = new Set(
     [...bootstrap.teams].sort((a, b) => teamStrength(a) - teamStrength(b)).slice(0, 4).map((t) => t.id)
   );
+  const softnessById = new Map();
+  for (const t of bootstrap.teams) {
+    const promo = promotedInfo(t);
+    const softness = Math.max(promo ? promo.softness : 0, bottomFourIds.has(t.id) ? 0.3 : 0);
+    if (softness > 0) softnessById.set(t.id, softness);
+  }
+  const weakTeamIds = new Set(softnessById.keys());
+  const softnessOf = (teamId) => softnessById.get(teamId) || 0;
 
   // Triple Captain target: the best premium's easiest fixture in the window, preferring a
   // newly-promoted/weak opponent and home advantage. Triple Captain is almost always used on
@@ -113,7 +123,7 @@ export function buildAdvice(data) {
       const bestFx = [...fx].sort(
         (a, b) =>
           a.difficulty - b.difficulty ||
-          (weakTeamIds.has(b.opponent) ? 1 : 0) - (weakTeamIds.has(a.opponent) ? 1 : 0) ||
+          softnessOf(b.opponent) - softnessOf(a.opponent) ||
           (b.home ? 1 : 0) - (a.home ? 1 : 0)
       )[0];
       const pts = capRow.pointsByGw?.find((g) => g.gw === bestFx.gw)?.points ?? null;

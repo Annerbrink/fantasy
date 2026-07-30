@@ -28,6 +28,32 @@ test('scorePlayers projects more points for a double gameweek', () => {
   assert.ok(p1.projNext > p2.projNext, 'double-gameweek player should out-project the single');
 });
 
+test('a fixture against Hull out-projects an identical fixture against a neutral side', () => {
+  // Two identical players; one faces Hull (soft), the other a neutral side, same difficulty.
+  const boot = {
+    events: [{ id: 1, is_next: true }],
+    teams: [
+      { id: 1, name: 'Arsenal', short_name: 'ARS' },
+      { id: 2, name: 'Hull City', short_name: 'HUL' },
+      { id: 3, name: 'Brighton', short_name: 'BHA' },
+      { id: 4, name: 'Chelsea', short_name: 'CHE' },
+    ],
+    element_types: [{ id: 3, singular_name_short: 'MID' }],
+    elements: [
+      makeElement({ id: 1, team: 1, ep_next: '5.0' }), // faces Hull
+      makeElement({ id: 2, team: 3, ep_next: '5.0' }), // faces Chelsea (neutral)
+    ],
+  };
+  const fixtures = [
+    { event: 1, team_h: 1, team_a: 2, team_h_difficulty: 3, team_a_difficulty: 3 }, // ARS v Hull
+    { event: 1, team_h: 3, team_a: 4, team_h_difficulty: 3, team_a_difficulty: 3 }, // BHA v CHE
+  ];
+  const scored = scorePlayers(boot, fixtures, 1);
+  const vsHull = scored.find((p) => p.id === 1);
+  const vsNeutral = scored.find((p) => p.id === 2);
+  assert.ok(vsHull.projNext > vsNeutral.projNext, 'the Hull fixture is boosted as the softest target');
+});
+
 test('projectByGameweek gives per-GW points: double sums two fixtures, blank is zero', () => {
   // Team 1 doubles in GW1 and blanks in GW2; team 2 plays a single fixture in GW1.
   const p1 = projectByGameweek(makeElement({ team: 1, ep_next: '5.0' }), makeFixtures(), 1, 3);

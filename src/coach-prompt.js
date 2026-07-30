@@ -3,7 +3,7 @@
 // ask for a concise, human weekly game plan — Claude explains and prioritises, it does not
 // re-derive the data. Keeping the payload small keeps latency and cost down.
 
-import { EXPERT_NOTES } from './expert-notes.js';
+import { EXPERT_SOURCES, PROMOTED_TEAMS } from './expert-notes.js';
 
 const money = (n) => (n == null ? '—' : `£${Number(n).toFixed(1)}m`);
 
@@ -48,7 +48,8 @@ export function buildCoachMessages(advice) {
     currentPlayers,
     priceRisers: (priceWatch?.risers || []).slice(0, 6).map((p) => `${p.name} (${p.team})`),
     priceFallers: (priceWatch?.fallers || []).slice(0, 6).map((p) => `${p.name} (${p.team})`),
-    expertGuidance: EXPERT_NOTES,
+    promotedTargets: PROMOTED_TEAMS.map((t) => `${t.name} (Championship xPts ${t.champXpts}${t.softness >= 1 ? ' — by far the weakest, the softest fixture to attack/captain against' : ''})`),
+    expertGuidance: EXPERT_SOURCES,
   };
 
   const system = [
@@ -58,7 +59,8 @@ export function buildCoachMessages(advice) {
     'Write a concise, confident weekly game plan in British English. Prioritise ruthlessly — say what to do and why, referencing the numbers you are given.',
     'Use the fixture data: favour transfers into teams with the kindest upcoming runs (good attacking sides facing weak opponents) and time chips around the best attacking gameweeks provided.',
     'Factor in price changes: prefer buying priceRisers before they rise, and consider selling priceFallers before they drop.',
-    'Weight the expertGuidance (FPL Harry): favour nailed 90-minute players, penalty/set-piece takers and Defcon options; captain boring (Haaland or Bruno); be patient and avoid panic transfers; target the listed defences for clean sheets. The expert value picks and defences-to-target are current players/teams you may reference.',
+    'Weight the expertGuidance (FPL Harry and LetsTalkFPL): favour nailed 90-minute players, penalty/set-piece takers and Defcon options; captain boring (Haaland or Bruno); be patient and avoid panic transfers; target the listed defences for clean sheets. The expert value picks and defences-to-target are current players/teams you may reference.',
+    'Prioritise attackers and captains facing the promotedTargets — especially the weakest one (Hull), whose underlying data is far worse than a typical promoted side, so a fixture against them is the softest on the board.',
     'For the mini-league angle, use rankGainTargets — to climb the league, prefer strong players your rivals do NOT own (differentials), and note any high-owned template you are missing that could cost you rank.',
     'Structure: (1) one-line headline verdict, (2) transfers (lean on fixture swings and price timing), (3) captain, (4) chips if relevant this window, (5) one mini-league angle to gain rank (use rankGainTargets).',
     'Be specific and brief. Do not invent players, prices, or fixtures beyond the data provided. Do not include any internal or system XML tags in your response.',

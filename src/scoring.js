@@ -7,6 +7,7 @@
 // explained to the user rather than asserted.
 
 import { teamFixturesFrom, difficultyMultiplier } from './fdr.js';
+import { softOpponentBonuses } from './expert-notes.js';
 
 const POS = { 1: 'GKP', 2: 'DEF', 3: 'MID', 4: 'FWD' };
 
@@ -108,29 +109,36 @@ export function minutesReliability(player, refs) {
   return 0.35 + 0.65 * Math.max(0, Math.min(1, share));
 }
 
+// Extra multiplier for facing a soft (promoted) opponent — Hull especially. `softBonus` is a
+// teamId → fractional-bonus lookup (e.g. 0.10 for Hull); no-op when not supplied.
+function softFactor(opponentId, softBonus) {
+  return 1 + (softBonus ? softBonus.get(opponentId) || 0 : 0);
+}
+
 // Project a player over a set of upcoming fixtures. Each fixture contributes
-// base * difficultyMultiplier; a Double Gameweek naturally contributes twice, a Blank zero.
-// `reliability` scales the whole projection by expected playing time.
-function projectOverFixtures(player, fixtures, reliability = 1) {
+// base * difficultyMultiplier (× a soft-opponent boost); a Double Gameweek naturally
+// contributes twice, a Blank zero. `reliability` scales the whole projection by expected
+// playing time.
+function projectOverFixtures(player, fixtures, reliability = 1, softBonus = null) {
   const base = (baseExpectation(player) + underlyingBonus(player)) * reliability;
   const avail = availabilityFactor(player);
   let total = 0;
   for (const fx of fixtures) {
-    total += base * difficultyMultiplier(fx.difficulty, fx.home);
+    total += base * difficultyMultiplier(fx.difficulty, fx.home) * softFactor(fx.opponent, softBonus);
   }
   return total * avail;
 }
 
 // Per-gameweek projection: one point total per GW across the window (a Double Gameweek sums
 // both fixtures, a Blank is 0). Powers the points-over-gameweeks chart.
-export function projectByGameweek(player, fixtures, targetGw, window = 6, reliability = 1) {
+export function projectByGameweek(player, fixtures, targetGw, window = 6, reliability = 1, softBonus = null) {
   const base = (baseExpectation(player) + underlyingBonus(player)) * reliability;
   const avail = availabilityFactor(player);
   const fx = teamFixturesFrom(fixtures, player.team, targetGw, window);
   const out = [];
   for (let gw = targetGw; gw < targetGw + window; gw += 1) {
     const inGw = fx.filter((f) => f.gw === gw);
-    const points = inGw.reduce((s, f) => s + base * difficultyMultiplier(f.difficulty, f.home), 0) * avail;
+    const points = inGw.reduce((s, f) => s + base * difficultyMultiplier(f.difficulty, f.home) * softFactor(f.opponent, softBonus), 0) * avail;
     out.push({ gw, points: Math.round(points * 100) / 100 });
   }
   return out;
@@ -158,14 +166,17 @@ export function scorePlayers(bootstrap, fixtures, targetGw, horizon = 0) {
     maxStarts: Math.max(0, ...bootstrap.elements.map((p) => p.starts || 0)),
     maxMinutes: Math.max(0, ...bootstrap.elements.map((p) => p.minutes || 0)),
   };
+  // Extra boost for facing a soft promoted side (Hull most of all), on top of FPL's own
+  // fixture difficulty — the data says Hull are far weaker than a typical promoted team.
+  const softBonus = softOpponentBonuses(bootstrap.teams);
   return bootstrap.elements.map((p) => {
     const reliability = minutesReliability(p, refs);
     const next1 = teamFixturesFrom(fixtures, p.team, targetGw, 1);
     const next3 = teamFixturesFrom(fixtures, p.team, targetGw, 3);
-    const projNext = projectOverFixtures(p, next1, reliability);
-    const projNext3 = projectOverFixtures(p, next3, reliability);
+    const projNext = projectOverFixtures(p, next1, reliability, softBonus);
+    const projNext3 = projectOverFixtures(p, next3, reliability, softBonus);
     // Optional longer horizon (e.g. the draft builder projects several GWs ahead).
-    const projHorizon = horizon > 0 ? projectOverFixtures(p, teamFixturesFrom(fixtures, p.team, targetGw, horizon), reliability) : projNext3;
+    const projHorizon = horizon > 0 ? projectOverFixtures(p, teamFixturesFrom(fixtures, p.team, targetGw, horizon), reliability, softBonus) : projNext3;
     const price = p.now_cost / 10;
     return {
       id: p.id,
@@ -190,7 +201,7 @@ export function scorePlayers(bootstrap, fixtures, targetGw, horizon = 0) {
       projNext3: round(projNext3),
       projHorizon: round(projHorizon),
       // Per-gameweek projection for the points graph (draft horizon, else a 6-GW default).
-      pointsByGw: projectByGameweek(p, fixtures, targetGw, horizon > 0 ? horizon : 6, reliability),
+      pointsByGw: projectByGameweek(p, fixtures, targetGw, horizon > 0 ? horizon : 6, reliability, softBonus),
       // Opta-derived advanced stats (free from bootstrap-static).
       advanced: advancedStats(p),
       // Minutes reliability ("nailed-ness") — how much playing time weights the projection.
