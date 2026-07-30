@@ -448,6 +448,7 @@ function playerChip(p, { bench = false, captain = false, gwPoints = null } = {})
   const ptsTitle = doubled ? ` title="${gwPoints} × 2 (captain)"` : (perGw ? ` title="${p.projHorizon} pts over the horizon"` : '');
   const capX2 = doubled ? ' <small class="cap-x2">©×2</small>' : '';
   return `<div class="${cls}" data-player-id="${p.id}" data-player-name="${esc(p.name)}" title="See ${esc(p.name)}'s fixtures">
+    <button class="pc-replace" data-replace-id="${p.id}" title="Replace ${esc(p.name)}" aria-label="Replace ${esc(p.name)}">⇄</button>
     <div class="pc-name">${esc(p.name)}${nailed}${p.onPens ? ' <small class="muted">(P)</small>' : ''}</div>
     <div class="pc-meta"><span>${esc(p.team)} · ${money(p.price)}</span><span${ptsTitle}>${shown} pts${capX2}</span></div>
   </div>`;
@@ -504,7 +505,7 @@ function renderDraft(d) {
         <div class="muted">${d.isAlternative ? 'vs the optimal squad’s projection' : 'benchmark squad (100)'} · rated on ${esc(d.objectiveLabel || 'XI + captain')} · avg FDR ${d.ratingBreakdown.avgFixtureDifficulty ?? '—'} · value ${d.ratingBreakdown.value} pts/£m</div>
       </div>
       ${d.benchBoostGw != null ? `<p class="hint">🪑 <strong>Bench Boost planned for GW${d.benchBoostGw}:</strong> the bench scores on that one week only, so the squad is built with a bench strong enough for it — every other week only your XI counts.</p>` : ''}
-      ${lockNote(d)}
+      ${d.edited ? `<div class="lock-note">✏️ Edited squad — rating shown vs the optimal. Use <strong>Build optimal</strong> to reset.</div>` : lockNote(d)}
       <div class="grid" style="margin-bottom:14px">
         ${statTile('Total cost', money(d.totalCost))}
         ${statTile('In the bank', money(d.remaining))}
@@ -594,36 +595,124 @@ function toast(msg) {
 // Clamp a fixture difficulty to a colour class (1-2 easy → green, 3 neutral, 4-5 hard → red).
 function fdrClass(d) { return `fdr-${Math.max(1, Math.min(5, Math.round(d || 3)))}`; }
 
-let playerModalEl = null;
-function closePlayerModal() {
-  if (!playerModalEl) return;
-  playerModalEl.remove();
-  playerModalEl = null;
+let modalEl = null;
+function closeModal() {
+  if (!modalEl) return;
+  modalEl.remove();
+  modalEl = null;
   document.removeEventListener('keydown', onModalKey);
 }
-function onModalKey(e) { if (e.key === 'Escape') closePlayerModal(); }
+function onModalKey(e) { if (e.key === 'Escape') closeModal(); }
+
+// Open an empty modal shell and return its body element to fill (shared by the schedule and
+// replace popups). Closes on backdrop click / ✕ / Esc.
+function openModal(ariaLabel) {
+  closeModal();
+  const el = document.createElement('div');
+  el.className = 'modal-backdrop';
+  el.innerHTML = `<div class="player-modal" role="dialog" aria-modal="true" aria-label="${esc(ariaLabel)}">
+    <button class="modal-close" aria-label="Close">✕</button>
+    <div class="modal-body"><p class="empty"><span class="spinner"></span> Loading…</p></div>
+  </div>`;
+  document.body.appendChild(el);
+  modalEl = el;
+  el.addEventListener('click', (e) => { if (e.target === el) closeModal(); });
+  el.querySelector('.modal-close').addEventListener('click', closeModal);
+  document.addEventListener('keydown', onModalKey);
+  return el.querySelector('.modal-body');
+}
 
 // Open a popup with the player's upcoming fixtures + projected points (fetched by id).
 async function openPlayerModal(id, name) {
   if (!id) return;
-  closePlayerModal();
-  const el = document.createElement('div');
-  el.className = 'modal-backdrop';
-  el.innerHTML = `<div class="player-modal" role="dialog" aria-modal="true" aria-label="Player schedule">
-    <button class="modal-close" aria-label="Close">✕</button>
-    <div class="modal-body"><p class="empty"><span class="spinner"></span> Loading ${esc(name || 'player')}…</p></div>
-  </div>`;
-  document.body.appendChild(el);
-  playerModalEl = el;
-  el.addEventListener('click', (e) => { if (e.target === el) closePlayerModal(); });
-  el.querySelector('.modal-close').addEventListener('click', closePlayerModal);
-  document.addEventListener('keydown', onModalKey);
+  const body = openModal(`${name || 'Player'} schedule`);
+  body.innerHTML = `<p class="empty"><span class="spinner"></span> Loading ${esc(name || 'player')}…</p>`;
   try {
     const p = await (await fetch(`/api/player?id=${encodeURIComponent(id)}`)).json();
     if (p.error) throw new Error(p.error);
-    el.querySelector('.modal-body').innerHTML = playerModalBody(p);
+    body.innerHTML = playerModalBody(p);
   } catch (e) {
-    el.querySelector('.modal-body').innerHTML = `<div class="error-box">Couldn't load schedule: ${esc(e.message)}</div>`;
+    body.innerHTML = `<div class="error-box">Couldn't load schedule: ${esc(e.message)}</div>`;
+  }
+}
+
+// Open the "replace" picker for an owned draft player: all players in that position ranked by the
+// currently-selected gameweek's projected points, marked by affordability / club-legality.
+async function openReplaceModal(outId) {
+  if (!lastDraft) return;
+  const squad = [...(lastDraft.startingXI || []), ...(lastDraft.bench || [])];
+  const out = squad.find((p) => String(p.id) === String(outId));
+  if (!out) return;
+
+  const selectedGw = (lastDraft.pointsByGw || [])[draftGwIndex]?.gw ?? null;
+  const budget = Math.round(((lastDraft.remaining ?? 0) + out.price) * 10) / 10;
+  const ownedIds = new Set(squad.map((p) => p.id));
+  const clubCounts = {}; // teamId -> count in the squad, excluding the outgoing player
+  for (const p of squad) if (p.id !== out.id) clubCounts[p.teamId] = (clubCounts[p.teamId] || 0) + 1;
+
+  const body = openModal(`Replace ${out.name}`);
+  body.innerHTML = `<h3 class="modal-title">Replace ${esc(out.name)} <small class="muted">${esc(out.position)}</small></h3>
+    <p class="hint">Budget <strong>${money(budget)}</strong>${selectedGw != null ? ` · points shown for GW ${selectedGw}` : ''} · sorted by projection</p>
+    <p class="empty"><span class="spinner"></span> Loading ${esc(out.position)}s…</p>`;
+  try {
+    const data = await (await fetch(`/api/pool?position=${encodeURIComponent(out.position)}&horizon=${encodeURIComponent(lastDraft.horizon || 5)}`)).json();
+    if (data.error) throw new Error(data.error);
+    const gwPts = (p) => selectedGw != null ? (p.pointsByGw?.find((g) => g.gw === selectedGw)?.points ?? 0) : p.projHorizon;
+    const rows = [...data.players]
+      .sort((a, b) => gwPts(b) - gwPts(a))
+      .map((p) => {
+        const owned = ownedIds.has(p.id);
+        const clubFull = (clubCounts[p.teamId] || 0) >= 3 && p.teamId !== out.teamId;
+        const affordable = p.price <= budget + 1e-9;
+        const disabled = owned || clubFull || !affordable;
+        const tag = owned ? '<span class="pill">in squad</span>'
+          : clubFull ? '<span class="pill neg">3 from club</span>'
+          : !affordable ? '<span class="pill neg">too dear</span>'
+          : '<span class="pill pos">swap in</span>';
+        return `<tr class="repl-row${disabled ? ' disabled' : ''}"${disabled ? '' : ` data-in="${p.id}"`}>
+          <td><strong>${esc(p.name)}</strong> <small class="muted">${esc(p.team)}</small></td>
+          <td class="num">${money(p.price)}</td>
+          <td class="num"><strong>${Math.round(gwPts(p) * 100) / 100}</strong></td>
+          <td class="num">${tag}</td>
+        </tr>`;
+      }).join('');
+    body.innerHTML = `<h3 class="modal-title">Replace ${esc(out.name)} <small class="muted">${esc(out.position)}</small></h3>
+      <p class="hint">Budget <strong>${money(budget)}</strong>${selectedGw != null ? ` · points for GW ${selectedGw}` : ''} · tap a player to swap them in</p>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Player</th><th class="num">Price</th><th class="num">${selectedGw != null ? `GW${selectedGw}` : 'Proj'}</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>`;
+    body.querySelectorAll('.repl-row[data-in]').forEach((r) =>
+      r.addEventListener('click', () => applyReplace(out.id, parseInt(r.dataset.in, 10)))
+    );
+  } catch (e) {
+    body.innerHTML = `<div class="error-box">Couldn't load players: ${esc(e.message)}</div>`;
+  }
+}
+
+// Swap one player for another and re-score the squad (every other player stays put).
+async function applyReplace(outId, inId) {
+  if (!lastDraft) return;
+  const squad = [...(lastDraft.startingXI || []), ...(lastDraft.bench || [])];
+  const ids = squad.map((p) => (p.id === outId ? inId : p.id));
+  closeModal();
+  await rebuildFromIds(ids);
+}
+
+// Rebuild the draft from an exact 15-man id list (all locked), keeping the selected gameweek.
+async function rebuildFromIds(ids) {
+  $('#draft-content').innerHTML = `<div class="card"><p class="empty"><span class="spinner"></span> Updating your squad…</p></div>`;
+  const horizon = $('#draft-horizon')?.value || lastDraft?.horizon || 5;
+  const bb = lastDraft?.benchBoostGw != null ? `&bbGw=${lastDraft.benchBoostGw}` : '';
+  try {
+    const res = await fetch(`/api/draft?budget=${encodeURIComponent($('#draft-budget')?.value.trim() || '100')}&horizon=${encodeURIComponent(horizon)}&lock=${ids.join(',')}${bb}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    data.edited = true; // mark as a hand-edited squad for the UI note
+    lastDraft = data;
+    renderDraft(lastDraft);
+  } catch (e) {
+    $('#draft-content').innerHTML = `<div class="card"><div class="error-box">Couldn't update the squad: ${esc(e.message)}</div></div>`;
   }
 }
 
@@ -642,8 +731,12 @@ function playerModalBody(p) {
     </table></div>`;
 }
 
-// One delegated handler makes any [data-player-id] element (chips, table names) open the popup.
+// One delegated handler: the ⇄ replace button opens the position picker; anything else with a
+// [data-player-id] (chips, table names) opens the fixtures popup. Replace is checked first so a
+// click on the icon doesn't also trigger the schedule popup on the surrounding chip.
 document.addEventListener('click', (e) => {
+  const repl = e.target.closest('.pc-replace');
+  if (repl) { e.stopPropagation(); openReplaceModal(repl.dataset.replaceId); return; }
   const t = e.target.closest('[data-player-id]');
   if (t) openPlayerModal(t.dataset.playerId, t.dataset.playerName);
 });

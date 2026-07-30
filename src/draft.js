@@ -300,6 +300,7 @@ function brief(p) {
     id: p.id,
     name: p.name,
     team: p.team,
+    teamId: p.teamId,
     position: p.position,
     price: p.price,
     projNext: p.projNext,

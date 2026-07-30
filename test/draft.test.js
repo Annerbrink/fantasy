@@ -116,6 +116,7 @@ test('draft players carry a per-gameweek projection for the GW stepper', () => {
   const scored = scorePlayers(boot, makeFixtures(), 1, 5);
   const draft = buildBestDraft(scored, { budget: 100 });
   const someone = draft.startingXI[0];
+  assert.ok(Number.isFinite(someone.teamId), 'briefs carry teamId (for the max-3-per-club check)');
   assert.ok(Array.isArray(someone.pointsByGw) && someone.pointsByGw.length > 0, 'starting XI carries pointsByGw');
   assert.ok(someone.pointsByGw.every((g) => typeof g.gw === 'number' && typeof g.points === 'number'));
   assert.ok(draft.bench[0].pointsByGw.length > 0, 'bench carries pointsByGw too');
