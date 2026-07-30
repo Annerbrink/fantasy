@@ -49,6 +49,46 @@ export function squadSeries(startingXI, bench = [], benchBoostGw = null) {
 export function effectiveProjection(startingXI, bench = [], benchBoostGw = null) {
   return round(squadSeries(startingXI, bench, benchBoostGw).reduce((s, g) => s + g.points, 0));
 }
+
+// The single best free transfer for an exact 15-man squad: the same-position swap — affordable
+// within the remaining bank, club-legal (max 3/club), not already owned — that most improves the
+// squad's effective projection. Returns { out, in, gain } or null when no swap helps. This is the
+// manager's one free transfer per gameweek (extra transfers cost -4, handled in the UI copy).
+export function bestSingleTransfer(scored, squadIds, { benchBoostGw = null, budgetRemaining = 0 } = {}) {
+  const byId = new Map(scored.map((p) => [p.id, p]));
+  const picked = squadIds.map((id) => byId.get(id)).filter(Boolean);
+  if (picked.length !== 15) return null;
+  const ownedIds = new Set(squadIds);
+  const clubCount = new Map();
+  for (const p of picked) clubCount.set(p.teamId, (clubCount.get(p.teamId) || 0) + 1);
+
+  const effOf = (list) => {
+    const xi = pickStartingXI(list);
+    const startIds = new Set(xi.map((p) => p.id));
+    return effectiveProjection(xi, list.filter((p) => !startIds.has(p.id)), benchBoostGw);
+  };
+  const curEff = effOf(picked);
+
+  let best = null;
+  for (let i = 0; i < picked.length; i += 1) {
+    const out = picked[i];
+    const budget = round(budgetRemaining + out.price);
+    const candidates = scored
+      .filter((c) =>
+        c.elementType === out.elementType && !ownedIds.has(c.id) && available(c) && c.price <= budget + 1e-9 &&
+        (clubCount.get(c.teamId) || 0) - (c.teamId === out.teamId ? 1 : 0) < MAX_PER_TEAM)
+      .sort((a, b) => proj(b) - proj(a))
+      .slice(0, 3);
+    for (const c of candidates) {
+      const swapped = picked.slice();
+      swapped[i] = c;
+      const gain = round(effOf(swapped) - curEff);
+      if (gain > 0 && (!best || gain > best.gain)) best = { out: brief(out), in: brief(c), gain };
+    }
+  }
+  return best;
+}
+
 function available(p) {
   if (typeof p.chanceNext === 'number') return p.chanceNext > 0;
   return !['i', 's', 'u', 'n'].includes(p.status);

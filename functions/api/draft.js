@@ -11,7 +11,7 @@
 import { fpl } from '../../src/fpl-client.js';
 import { resolveTargetGw } from '../../src/fdr.js';
 import { scorePlayers } from '../../src/scoring.js';
-import { buildDraft, buildBestDraft, mulberry32 } from '../../src/draft.js';
+import { buildDraft, buildBestDraft, mulberry32, bestSingleTransfer } from '../../src/draft.js';
 
 function gradeFor(rating) {
   if (rating >= 99) return 'Elite';
@@ -63,6 +63,10 @@ export async function onRequestGet({ request }) {
   const rating = Math.max(0, Math.min(100, Math.round((draft.effectiveProjection / optProj) * 100)));
   const objectiveLabel = benchBoostGw != null ? `XI + captain · Bench Boost GW${benchBoostGw}` : 'XI + captain';
 
+  // The best single free transfer for the displayed squad (your one free move each gameweek).
+  const squadIds = [...draft.startingXI, ...draft.bench].map((p) => p.id);
+  const topTransfer = bestSingleTransfer(scored, squadIds, { benchBoostGw, budgetRemaining: draft.remaining });
+
   return new Response(
     JSON.stringify({
       targetGw,
@@ -73,6 +77,7 @@ export async function onRequestGet({ request }) {
       rating,
       grade: gradeFor(rating),
       objectiveLabel,
+      topTransfer,
       ratingBreakdown: {
         effectiveProjection: draft.effectiveProjection,
         squadProjection: draft.squadProjection,

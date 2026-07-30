@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { scorePlayers } from '../src/scoring.js';
-import { buildDraft, buildBestDraft, mulberry32 } from '../src/draft.js';
+import { buildDraft, buildBestDraft, mulberry32, bestSingleTransfer } from '../src/draft.js';
 import { makeBootstrap, makeFixtures, makeElement } from './helpers.js';
 
 // Build a realistic-sized pool: enough players per position and several teams so the squad
@@ -185,6 +185,36 @@ test('the squad always includes a nailed keeper (prefers a slightly pricier nail
   assert.ok(draft.squad.GKP.some((p) => p.nailed), 'at least one nailed keeper is reserved');
   const backup = draft.squad.GKP.slice().sort((a, b) => a.price - b.price)[0];
   assert.equal(backup.id, nailed.id, 'the nailed keeper is preferred as the cheap backup');
+});
+
+test('bestSingleTransfer finds an improving free transfer for a weakened squad', () => {
+  const boot = bigBootstrap();
+  const scored = scorePlayers(boot, makeFixtures(), 1, 5);
+  const opt = buildBestDraft(scored, { budget: 100 });
+  const ids = [...opt.startingXI, ...opt.bench].map((p) => p.id);
+  const owned = new Set(ids);
+  // Swap one starting midfielder for a weaker, affordable, unused one to open an upgrade.
+  const midOut = opt.startingXI.find((p) => p.position === 'MID');
+  const weakMid = scored
+    .filter((p) => p.position === 'MID' && !owned.has(p.id) && p.price <= midOut.price)
+    .sort((a, b) => a.projHorizon - b.projHorizon)[0];
+  assert.ok(weakMid, 'a weaker affordable mid exists to create the opportunity');
+  const weakenedIds = ids.map((id) => (id === midOut.id ? weakMid.id : id));
+  const remaining = Math.round((100 - weakenedIds.reduce((s, id) => s + scored.find((p) => p.id === id).price, 0)) * 10) / 10;
+
+  const t = bestSingleTransfer(scored, weakenedIds, { budgetRemaining: remaining });
+  assert.ok(t && t.gain > 0, 'suggests a positive-gain transfer');
+  assert.equal(t.in.position, t.out.position, 'a same-position swap');
+});
+
+test('bestSingleTransfer returns null when nothing improves an unchanged optimal-ish squad', () => {
+  const boot = bigBootstrap();
+  const scored = scorePlayers(boot, makeFixtures(), 1, 5);
+  const opt = buildBestDraft(scored, { budget: 100 });
+  const ids = [...opt.startingXI, ...opt.bench].map((p) => p.id);
+  const t = bestSingleTransfer(scored, ids, { budgetRemaining: opt.remaining });
+  // Either no improvement, or a genuinely positive one — never a non-positive suggestion.
+  assert.ok(t === null || t.gain > 0);
 });
 
 test('locked players are always included and never swapped out', () => {

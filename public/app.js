@@ -522,11 +522,35 @@ function renderDraft(d) {
       <p class="hint" style="margin-top:14px">Bench:</p>
       <div class="pitch-row">${d.bench.map((p) => playerChip(p, { bench: true, gwPoints: gwPointsFor(p) })).join('')}</div>
     </div>
+    ${suggestedTransferCard(d)}
     ${pointsChart(series, { heading: 'Squad projected points', subtitle: 'Starting XI projection per gameweek over your chosen horizon. Tap ◀ ▶ above to focus a week.', selectedGw })}`;
 
   // Wire the stepper (re-renders the same draft focused on the new GW).
   $('#draft-gw-prev')?.addEventListener('click', () => stepDraftGw(-1));
   $('#draft-gw-next')?.addEventListener('click', () => stepDraftGw(1));
+  // Wire the suggested free transfer's Apply button.
+  $('#draft-content .xfer-apply')?.addEventListener('click', (e) =>
+    applyReplace(parseInt(e.currentTarget.dataset.out, 10), parseInt(e.currentTarget.dataset.in, 10))
+  );
+}
+
+// The single best free transfer for the current squad, with the FT / -4 rule spelled out.
+function suggestedTransferCard(d) {
+  const rule = `<p class="hint" style="margin:0 0 8px">💡 You get <strong>1 free transfer</strong> each gameweek — any extra transfer costs <strong>−4 points</strong>.</p>`;
+  const t = d.topTransfer;
+  if (!t) {
+    return `<div class="card"><h2>Suggested free transfer</h2>${rule}<p class="muted">No single transfer improves this squad — it's already optimised for your budget.</p></div>`;
+  }
+  return `<div class="card">
+    <h2>Suggested free transfer <span class="gw">· +${t.gain} pts over ${d.horizon} GWs</span></h2>
+    ${rule}
+    <div class="move">
+      <span class="pill neg">OUT</span> ${playerLink(t.out.id, t.out.name)} <small class="muted">${esc(t.out.team)} · ${money(t.out.price)}</small>
+      <span class="arrow">→</span>
+      <span class="pill pos">IN</span> ${playerLink(t.in.id, t.in.name)} <small class="muted">${esc(t.in.team)} · ${money(t.in.price)}</small>
+      <button class="primary xfer-apply" data-out="${t.out.id}" data-in="${t.in.id}">Apply (free)</button>
+    </div>
+  </div>`;
 }
 
 // Move the draft's selected gameweek and re-render, clamped to the horizon.
