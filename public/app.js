@@ -560,6 +560,37 @@ document.querySelector('.tab[data-tab="stats"]').addEventListener('click', () =>
   if (!statsLoaded) { statsLoaded = true; loadStats(); }
 });
 
+// ---- Multi-week transfer plan -------------------------------------------------------
+async function loadPlan() {
+  const el = $('#plan-content');
+  if (!el) return;
+  if (!store.teamId) { el.innerHTML = ''; return; }
+  try {
+    const p = await (await fetch(`/api/plan?teamId=${encodeURIComponent(store.teamId)}&horizon=5`)).json();
+    if (!p.hasSquad) { el.innerHTML = ''; return; }
+    if (!p.roadmap?.length) {
+      el.innerHTML = `<div class="card"><h2>Transfer plan <span class="gw">· next ${p.horizon} GWs</span></h2><p class="muted">No upgrades beat your current squad over the next ${p.horizon} gameweeks — hold your transfers.</p></div>`;
+      return;
+    }
+    const rows = p.roadmap.map((m) => `<tr>
+      <td><strong>GW ${p.targetGw + m.weekOffset}</strong>${m.weekOffset === 0 ? ' <span class="pill pos">now</span>' : ''}</td>
+      <td class="move"><span class="pill neg">OUT</span> ${esc(m.out.name)} <span class="arrow">→</span> <span class="pill pos">IN</span> ${esc(m.in.name)} <small class="muted">${esc(m.in.team)}</small></td>
+      <td class="num">+${m.realizedGain} pts</td>
+    </tr>`).join('');
+    const hit = (p.hitWorthy || []).length
+      ? `<p class="hint" style="margin-top:10px">💥 Worth a −4 hit now: ${p.hitWorthy.map((h) => `${esc(h.out.name)}→${esc(h.in.name)} (+${h.nowGain})`).join(', ')}</p>`
+      : '';
+    el.innerHTML = `<div class="card">
+      <h2>📅 Transfer plan <span class="gw">· ${p.freeTransfers} FT · ${money(p.bank)} bank · next ${p.horizon} GWs</span></h2>
+      <p class="hint">One free transfer per week (no hits), best moves first so you bank the gains for longer.</p>
+      <div class="table-scroll"><table>
+        <thead><tr><th>When</th><th>Move</th><th class="num">Gain</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>${hit}
+    </div>`;
+  } catch { el.innerHTML = ''; }
+}
+
 // ---- AI usage badge -----------------------------------------------------------------
 async function refreshUsage() {
   const badge = $('#usage-badge');
@@ -611,6 +642,7 @@ async function load() {
   renderTransfers(advice);
   renderCaptain(advice);
   renderRivals(advice);
+  loadPlan();
 
   // AI coach — best-effort, hides itself if no API key is configured.
   try {
