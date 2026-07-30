@@ -5,6 +5,12 @@
 // £100.0m), and no more than 3 players from any single club. Exact optimisation is an
 // integer program; for advisory use we run a budget-aware greedy that reserves enough money
 // to fill remaining slots, then improve with swaps. Deterministic and unit-tested.
+//
+// Two extras layered on top:
+//   - `jitter` + a seeded RNG let the builder produce *alternative* drafts: perturbing each
+//     player's ranking yields different-but-still-strong squads to compare.
+//   - the builder reports the raw squad projection and fixture/value breakdown so callers
+//     can turn it into a 0-100 team rating (see functions/api/draft.js).
 
 const SQUAD = { 1: 2, 2: 5, 3: 5, 4: 3 }; // elementType -> count
 const POS_NAME = { 1: 'GKP', 2: 'DEF', 3: 'MID', 4: 'FWD' };
@@ -18,10 +24,43 @@ function available(p) {
   return !['i', 's', 'u', 'n'].includes(p.status);
 }
 
-export function buildDraft(scored, { budget = 100.0 } = {}) {
+// Small, fast seeded PRNG so alternative drafts are reproducible from a seed.
+export function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function rng() {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Multi-start "optimal": the plain greedy only finds a local optimum, so we also run several
+// jittered restarts and keep the highest-projecting *complete* squad. This is the squad shown
+// as "optimal" and the benchmark the team rating is scored against.
+export function buildBestDraft(scored, { budget = 100.0, attempts = 16, jitter = 0.35 } = {}) {
+  let best = buildDraft(scored, { budget });
+  for (let i = 1; i <= attempts; i += 1) {
+    const seed = (Math.imul(i, 2654435761) ^ 0x9e3779b9) >>> 0;
+    const candidate = buildDraft(scored, { budget, jitter, rng: mulberry32(seed) });
+    if (candidate.complete && candidate.squadProjection > best.squadProjection) best = candidate;
+  }
+  return best;
+}
+
+export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.random } = {}) {
   const pool = scored.filter((p) => available(p) && p.price > 0);
 
-  // Cheapest available price per position — used to reserve budget for unfilled slots.
+  // Perturbed selection score. jitter = 0 → true projection (the optimal squad); jitter > 0
+  // → each player's rank is nudged by up to ±jitter, producing a plausible alternative.
+  const jittered = new Map();
+  for (const p of pool) {
+    const factor = jitter > 0 ? 1 + (rng() * 2 - 1) * jitter : 1;
+    jittered.set(p.id, Math.max(0, proj(p) * factor));
+  }
+  const score = (p) => jittered.get(p.id) ?? proj(p);
+
   const minPrice = {};
   for (const et of Object.keys(SQUAD)) {
     const prices = pool.filter((p) => p.elementType === Number(et)).map((p) => p.price);
@@ -33,13 +72,9 @@ export function buildDraft(scored, { budget = 100.0 } = {}) {
   const teamCount = new Map();
   let spend = 0;
 
-  // Consider players by projected points (best first); accept when the pick keeps the rest
-  // of the squad affordable and respects the per-club cap.
-  const ranked = [...pool].sort((a, b) => proj(b) - proj(a));
-
+  const ranked = [...pool].sort((a, b) => score(b) - score(a));
   const totalSlots = () => Object.values(need).reduce((s, n) => s + n, 0);
   const reserveAfter = (etPicked) => {
-    // Minimum cost to fill every remaining slot except one of etPicked (which we're filling).
     let reserve = 0;
     for (const et of Object.keys(need)) {
       const remaining = need[et] - (Number(et) === etPicked ? 1 : 0);
@@ -53,7 +88,6 @@ export function buildDraft(scored, { budget = 100.0 } = {}) {
     const et = p.elementType;
     if (need[et] <= 0) continue;
     if ((teamCount.get(p.teamId) || 0) >= MAX_PER_TEAM) continue;
-    // Must still afford the cheapest fills for all other remaining slots.
     if (spend + p.price + reserveAfter(et) > budget + 1e-9) continue;
 
     picked.push(p);
@@ -62,8 +96,7 @@ export function buildDraft(scored, { budget = 100.0 } = {}) {
     teamCount.set(p.teamId, (teamCount.get(p.teamId) || 0) + 1);
   }
 
-  // Improvement pass: try to spend leftover budget upgrading the weakest picks.
-  improve(picked, pool, teamCount, budget, () => spend, (v) => { spend = v; }, need);
+  improve(picked, pool, teamCount, budget, () => spend, (v) => { spend = v; }, score);
   spend = round(picked.reduce((s, p) => s + p.price, 0));
 
   const startingXI = pickStartingXI(picked);
@@ -72,12 +105,18 @@ export function buildDraft(scored, { budget = 100.0 } = {}) {
   const captain = [...startingXI].sort((a, b) => b.projNext - a.projNext)[0] || null;
   const vice = [...startingXI].sort((a, b) => b.projNext - a.projNext)[1] || null;
 
+  const squadProjection = round(picked.reduce((s, p) => s + proj(p), 0));
+  const avgFixtureDifficulty = squadAvgDifficulty(picked);
+
   return {
     budget,
     totalCost: spend,
     remaining: round(budget - spend),
     complete: picked.length === 15,
     projectedPoints: round(startingXI.reduce((s, p) => s + proj(p), 0)),
+    squadProjection,
+    avgFixtureDifficulty,
+    value: spend > 0 ? round(squadProjection / spend) : 0,
     formation: formationOf(startingXI),
     squad: groupByPosition(picked),
     startingXI: startingXI.map(brief),
@@ -87,9 +126,18 @@ export function buildDraft(scored, { budget = 100.0 } = {}) {
   };
 }
 
-// Greedy upgrade: for each pick (cheapest-impact first) see if a same-position, affordable,
-// team-legal, unowned player raises projected points; take the biggest single gain, repeat.
-function improve(picked, pool, teamCount, budget, getSpend, setSpend) {
+// Average upcoming fixture difficulty across the squad (lower = kinder run).
+function squadAvgDifficulty(picked) {
+  const diffs = [];
+  for (const p of picked) {
+    const fx = p.fixturesNext3 || [];
+    if (fx.length) diffs.push(fx.reduce((s, f) => s + (f.difficulty || 3), 0) / fx.length);
+    else diffs.push(3);
+  }
+  return diffs.length ? Math.round((diffs.reduce((s, d) => s + d, 0) / diffs.length) * 100) / 100 : null;
+}
+
+function improve(picked, pool, teamCount, budget, getSpend, setSpend, score) {
   const ownedIds = new Set(picked.map((p) => p.id));
   for (let iter = 0; iter < 30; iter += 1) {
     let best = null;
@@ -97,13 +145,12 @@ function improve(picked, pool, teamCount, budget, getSpend, setSpend) {
       const cur = picked[i];
       const budgetRoom = budget - getSpend() + cur.price;
       const candidates = pool.filter(
-        (c) => c.elementType === cur.elementType && !ownedIds.has(c.id) && c.price <= budgetRoom + 1e-9 && proj(c) > proj(cur)
+        (c) => c.elementType === cur.elementType && !ownedIds.has(c.id) && c.price <= budgetRoom + 1e-9 && score(c) > score(cur)
       );
       for (const c of candidates) {
-        // Respect per-club cap (account for removing cur from its club).
         const cCount = (teamCount.get(c.teamId) || 0) - (c.teamId === cur.teamId ? 1 : 0);
         if (cCount >= MAX_PER_TEAM) continue;
-        const gain = proj(c) - proj(cur);
+        const gain = score(c) - score(cur);
         if (!best || gain > best.gain) best = { i, cur, c, gain };
       }
     }
@@ -118,7 +165,6 @@ function improve(picked, pool, teamCount, budget, getSpend, setSpend) {
   }
 }
 
-// Best legal starting XI: 1 GKP, >=3 DEF, >=1 FWD, 11 total, maximising projected points.
 function pickStartingXI(squad) {
   const by = (et) => squad.filter((p) => p.elementType === et).sort((a, b) => proj(b) - proj(a));
   const gk = by(1), def = by(2), mid = by(3), fwd = by(4);

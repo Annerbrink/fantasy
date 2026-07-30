@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { scorePlayers } from '../src/scoring.js';
-import { buildDraft } from '../src/draft.js';
+import { buildDraft, buildBestDraft, mulberry32 } from '../src/draft.js';
 import { makeBootstrap, makeFixtures, makeElement } from './helpers.js';
 
 // Build a realistic-sized pool: enough players per position and several teams so the squad
@@ -68,4 +68,36 @@ test('buildDraft picks a valid starting XI and formation', () => {
   assert.match(draft.formation, /^\d-\d-\d$/);
   // Exactly one keeper starts.
   assert.equal(draft.startingXI.filter((p) => p.position === 'GKP').length, 1);
+});
+
+test('mulberry32 is deterministic for a given seed', () => {
+  const a = mulberry32(12345);
+  const b = mulberry32(12345);
+  assert.equal(a(), b());
+  assert.equal(a(), b());
+});
+
+test('a jittered draft stays legal, and the multi-start best is the projection ceiling', () => {
+  const boot = bigBootstrap();
+  const scored = scorePlayers(boot, makeFixtures(), 1, 5);
+  const best = buildBestDraft(scored, { budget: 100 });
+  const alt = buildDraft(scored, { budget: 100, jitter: 0.3, rng: mulberry32(7) });
+
+  // Legal squad.
+  const all = [...alt.squad.GKP, ...alt.squad.DEF, ...alt.squad.MID, ...alt.squad.FWD];
+  assert.equal(all.length, 15);
+  assert.ok(alt.totalCost <= 100 + 1e-6);
+  const byTeam = {};
+  for (const p of all) byTeam[p.team] = (byTeam[p.team] || 0) + 1;
+  assert.ok(Math.max(...Object.values(byTeam)) <= 3);
+  // The multi-start best is at least as good as any single alternative.
+  assert.ok(best.squadProjection >= alt.squadProjection - 1e-6);
+});
+
+test('same seed reproduces the same alternative draft', () => {
+  const boot = bigBootstrap();
+  const scored = scorePlayers(boot, makeFixtures(), 1, 5);
+  const a = buildDraft(scored, { budget: 100, jitter: 0.3, rng: mulberry32(42) });
+  const b = buildDraft(scored, { budget: 100, jitter: 0.3, rng: mulberry32(42) });
+  assert.deepEqual(a.startingXI.map((p) => p.id), b.startingXI.map((p) => p.id));
 });

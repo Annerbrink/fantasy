@@ -237,9 +237,18 @@ function renderDraft(d) {
 
   const xiByPos = (pos) => d.startingXI.filter((p) => p.position === pos);
 
+  const ratingColor = d.rating >= 95 ? 'pos' : d.rating >= 88 ? 'warn' : 'neg';
+  const title = d.isAlternative
+    ? `Alternative squad <span class="gw">· seed ${d.seed} · GW ${d.targetGw} · ${d.horizon}-GW</span>`
+    : `Optimal squad <span class="gw">· GW ${d.targetGw} · ${d.horizon}-GW projection</span>`;
+
   $('#draft-content').innerHTML = `
     <div class="card">
-      <h2>Suggested squad <span class="gw">· GW ${d.targetGw} · ${d.horizon}-GW projection</span></h2>
+      <h2>${title}</h2>
+      <div class="rating-banner">
+        <div class="rating-score"><span class="pill ${ratingColor}">${d.rating}/100</span> <strong>${esc(d.grade)}</strong></div>
+        <div class="muted">${d.isAlternative ? 'vs the optimal squad’s projection' : 'benchmark squad (100)'} · avg FDR ${d.ratingBreakdown.avgFixtureDifficulty ?? '—'} · value ${d.ratingBreakdown.value} pts/£m</div>
+      </div>
       <div class="grid" style="margin-bottom:14px">
         ${statTile('Total cost', money(d.totalCost))}
         ${statTile('In the bank', money(d.remaining))}
@@ -257,23 +266,26 @@ function renderDraft(d) {
     </div>`;
 }
 
-async function buildDraft() {
+async function buildDraft(randomize = false) {
   const budget = $('#draft-budget').value.trim() || '100';
   const horizon = $('#draft-horizon').value;
-  $('#draft-content').innerHTML = `<div class="card"><p class="empty"><span class="spinner"></span> Optimising your squad…</p></div>`;
+  const label = randomize ? 'Rolling an alternative squad…' : 'Optimising your squad…';
+  $('#draft-content').innerHTML = `<div class="card"><p class="empty"><span class="spinner"></span> ${label}</p></div>`;
+  const rnd = randomize ? `&randomize=1&seed=${Math.floor(Math.random() * 1e9)}` : '';
   try {
-    const res = await fetch(`/api/draft?budget=${encodeURIComponent(budget)}&horizon=${encodeURIComponent(horizon)}`);
+    const res = await fetch(`/api/draft?budget=${encodeURIComponent(budget)}&horizon=${encodeURIComponent(horizon)}${rnd}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     renderDraft(await res.json());
   } catch (e) {
     $('#draft-content').innerHTML = `<div class="card"><div class="error-box">Couldn't build the squad: ${esc(e.message)}</div></div>`;
   }
 }
-$('#draft-build').addEventListener('click', buildDraft);
+$('#draft-build').addEventListener('click', () => buildDraft(false));
+$('#draft-random').addEventListener('click', () => buildDraft(true));
 // Build once the first time the Draft tab is opened.
 let draftLoaded = false;
 document.querySelector('.tab[data-tab="draft"]').addEventListener('click', () => {
-  if (!draftLoaded) { draftLoaded = true; buildDraft(); }
+  if (!draftLoaded) { draftLoaded = true; buildDraft(false); }
 });
 
 // ---- AI usage badge -----------------------------------------------------------------
