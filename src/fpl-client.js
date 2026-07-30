@@ -59,6 +59,7 @@ export const fpl = {
   entryHistory: (tid) => cachedGet(`${BASE}/entry/${tid}/history/`, TTL.history),
   entryPicks: (tid, gw) => cachedGet(`${BASE}/entry/${tid}/event/${gw}/picks/`, TTL.picks),
   element: (eid) => cachedGet(`${BASE}/element-summary/${eid}/`, TTL.element),
+  eventLive: (gw) => cachedGet(`${BASE}/event/${gw}/live/`, TTL.entry),
   leagueStandings: (lid, page = 1) =>
     cachedGet(`${BASE}/leagues-classic/${lid}/standings/?page_standings=${page}`, TTL.league),
 };

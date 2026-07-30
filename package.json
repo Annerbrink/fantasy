@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "wrangler pages dev",
     "deploy": "wrangler pages deploy public",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "backtest": "node scripts/backtest.js"
   },
   "license": "ISC",
   "devDependencies": {

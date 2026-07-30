@@ -615,6 +615,30 @@ function renderMarkdown(md) {
   return html;
 }
 
+// ---- Model accuracy (calibration) ---------------------------------------------------
+async function loadAccuracy() {
+  const el = $('#accuracy-card');
+  if (!el) return;
+  try {
+    const a = await (await fetch('/api/accuracy')).json();
+    if (!a.available) {
+      el.innerHTML = `<div class="card"><h2>Model accuracy</h2><p class="muted">${esc(a.reason || 'Not available yet.')} Accuracy metrics appear once gameweeks have been played.</p></div>`;
+      return;
+    }
+    const spearPct = a.spearman != null ? Math.round(a.spearman * 100) : null;
+    el.innerHTML = `<div class="card">
+      <h2>Model accuracy <span class="gw">· GW${a.gw}</span></h2>
+      <div class="grid">
+        ${statTile('Rank correlation', spearPct != null ? spearPct + '%' : '—')}
+        ${statTile('Avg error (MAE)', a.mae != null ? a.mae + ' pts' : '—')}
+        ${statTile('Bias', a.bias != null ? (a.bias > 0 ? '+' : '') + a.bias : '—')}
+        ${statTile('Players', a.count)}
+      </div>
+      <p class="hint" style="margin-top:10px">${esc(a.note || '')}</p>
+    </div>`;
+  } catch { el.innerHTML = ''; }
+}
+
 // ---- Load pipeline ------------------------------------------------------------------
 async function load() {
   const league = $('#league-sub');
@@ -643,6 +667,7 @@ async function load() {
   renderCaptain(advice);
   renderRivals(advice);
   loadPlan();
+  loadAccuracy();
 
   // AI coach — best-effort, hides itself if no API key is configured.
   try {
