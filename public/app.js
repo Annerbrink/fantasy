@@ -415,6 +415,12 @@ document.addEventListener('click', (e) => {
   }, { notify: true });
 });
 $('#lock-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addLock(); } });
+// Bench Boost toggle: relabel and rebuild.
+$('#draft-bb')?.addEventListener('change', (e) => {
+  const lbl = e.target.closest('.switch')?.querySelector('.switch-label');
+  if (lbl) lbl.textContent = e.target.checked ? 'On' : 'Off';
+  if (typeof draftLoaded !== 'undefined' && draftLoaded) buildDraft(false);
+});
 
 function lockNote(d) {
   const inc = d.lockedIncluded || [];
@@ -433,8 +439,9 @@ async function buildDraft(randomize = false) {
   $('#draft-content').innerHTML = `<div class="card"><p class="empty"><span class="spinner"></span> ${label}</p></div>`;
   const rnd = randomize ? `&randomize=1&seed=${Math.floor(Math.random() * 1e9)}` : '';
   const lock = lockedPlayers.length ? `&lock=${lockedPlayers.map((p) => p.id).join(',')}` : '';
+  const bb = $('#draft-bb')?.checked ? '&bb=1' : '';
   try {
-    const res = await fetch(`/api/draft?budget=${encodeURIComponent(budget)}&horizon=${encodeURIComponent(horizon)}${rnd}${lock}`);
+    const res = await fetch(`/api/draft?budget=${encodeURIComponent(budget)}&horizon=${encodeURIComponent(horizon)}${rnd}${lock}${bb}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     renderDraft(await res.json());
   } catch (e) {

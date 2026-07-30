@@ -41,17 +41,19 @@ export function mulberry32(seed) {
 // Multi-start "optimal": the plain greedy only finds a local optimum, so we also run several
 // jittered restarts and keep the highest-projecting *complete* squad. This is the squad shown
 // as "optimal" and the benchmark the team rating is scored against.
-export function buildBestDraft(scored, { budget = 100.0, attempts = 16, jitter = 0.35, lockedIds = [] } = {}) {
-  let best = buildDraft(scored, { budget, lockedIds });
+export function buildBestDraft(scored, { budget = 100.0, attempts = 16, jitter = 0.35, lockedIds = [], benchBoost = false } = {}) {
+  let best = buildDraft(scored, { budget, lockedIds, benchBoost });
   for (let i = 1; i <= attempts; i += 1) {
     const seed = (Math.imul(i, 2654435761) ^ 0x9e3779b9) >>> 0;
-    const candidate = buildDraft(scored, { budget, jitter, rng: mulberry32(seed), lockedIds });
+    const candidate = buildDraft(scored, { budget, jitter, rng: mulberry32(seed), lockedIds, benchBoost });
     if (candidate.complete && candidate.squadProjection > best.squadProjection) best = candidate;
   }
   return best;
 }
 
-export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.random, lockedIds = [] } = {}) {
+// benchBoost: when true, the whole bench is valued (all 15 score in a Bench Boost week), so
+// the backup keeper is optimised like a starter rather than forced to the cheapest option.
+export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.random, lockedIds = [], benchBoost = false } = {}) {
   const pool = scored.filter((p) => available(p) && p.price > 0);
 
   // Perturbed selection score. jitter = 0 → true projection (the optimal squad); jitter > 0
@@ -111,6 +113,19 @@ export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.rand
     else { lockedSet.add(id); lockedIncluded.push(brief(p)); }
   }
 
+  // Only one keeper plays each week, so the backup GK should be the cheapest available —
+  // spend the saved budget on outfield. Reserve it here; the starting GK is optimised by the
+  // greedy fill below. Protect it from the improvement pass so it stays cheap.
+  const cheapestOfType = (et) =>
+    pool.filter((p) => p.elementType === et && !ownedIds.has(p.id)).sort((a, b) => a.price - b.price)[0];
+  let backupGkId = null;
+  if (!benchBoost && need[1] >= 1) {
+    const gk = cheapestOfType(1);
+    if (gk && tryAdd(gk) === null) backupGkId = gk.id;
+  }
+  const protectedIds = new Set(lockedSet);
+  if (backupGkId != null) protectedIds.add(backupGkId);
+
   const ranked = [...pool].sort((a, b) => score(b) - score(a));
   for (const p of ranked) {
     if (totalSlots() === 0) break;
@@ -118,7 +133,7 @@ export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.rand
     tryAdd(p);
   }
 
-  improve(picked, pool, teamCount, ownedIds, budget, () => spend, (v) => { spend = v; }, score, lockedSet);
+  improve(picked, pool, teamCount, ownedIds, budget, () => spend, (v) => { spend = v; }, score, protectedIds);
   spend = round(picked.reduce((s, p) => s + p.price, 0));
 
   const startingXI = pickStartingXI(picked);

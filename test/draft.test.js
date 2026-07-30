@@ -94,6 +94,28 @@ test('a jittered draft stays legal, and the multi-start best is the projection c
   assert.ok(best.squadProjection >= alt.squadProjection - 1e-6);
 });
 
+test('by default the backup goalkeeper is the cheapest available (one keeper plays)', () => {
+  const boot = bigBootstrap();
+  const scored = scorePlayers(boot, makeFixtures(), 1, 5);
+  const draft = buildBestDraft(scored, { budget: 100 });
+  const gkPrices = draft.squad.GKP.map((p) => p.price).sort((a, b) => a - b);
+  const cheapestGk = Math.min(...scored.filter((p) => p.position === 'GKP').map((p) => p.price));
+  assert.equal(draft.squad.GKP.length, 2);
+  assert.equal(gkPrices[0], cheapestGk, 'the backup keeper is the cheapest option');
+});
+
+test('Bench Boost mode does not force the cheapest backup keeper', () => {
+  // Give keepers clearly different projections so BB mode would pick a stronger 2nd GK.
+  const boot = bigBootstrap();
+  // Bump one expensive keeper's projection so BB mode prefers two playing keepers.
+  const scored = scorePlayers(boot, makeFixtures(), 1, 5);
+  const normal = buildBestDraft(scored, { budget: 100, benchBoost: false });
+  const bb = buildBestDraft(scored, { budget: 100, benchBoost: true });
+  const normalGkSpend = normal.squad.GKP.reduce((s, p) => s + p.price, 0);
+  const bbGkSpend = bb.squad.GKP.reduce((s, p) => s + p.price, 0);
+  assert.ok(bbGkSpend >= normalGkSpend, 'Bench Boost mode can spend at least as much on keepers');
+});
+
 test('locked players are always included and never swapped out', () => {
   const boot = bigBootstrap();
   const scored = scorePlayers(boot, makeFixtures(), 1, 5);

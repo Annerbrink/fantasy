@@ -34,13 +34,15 @@ export async function onRequestGet({ request }) {
     .map((s) => parseInt(s, 10))
     .filter((n) => Number.isFinite(n))
     .slice(0, 15);
+  // Build for a Bench Boost week — value the whole bench (playing backup keeper etc.).
+  const benchBoost = url.searchParams.get('bb') === '1';
 
   const [bootstrap, fixtures] = await Promise.all([fpl.bootstrap(), fpl.fixtures()]);
   const targetGw = resolveTargetGw(bootstrap.events);
   const scored = scorePlayers(bootstrap, fixtures, targetGw, horizon);
 
-  // The multi-start best squad (no locks) is the rating benchmark (100).
-  const optimal = buildBestDraft(scored, { budget });
+  // The multi-start best squad (no locks) under the same objective is the rating benchmark.
+  const optimal = buildBestDraft(scored, { budget, benchBoost });
   const optProj = optimal.squadProjection || 1;
 
   let draft = optimal;
@@ -48,10 +50,10 @@ export async function onRequestGet({ request }) {
   let isAlternative = false;
   if (randomize) {
     usedSeed = Number.isFinite(seed) ? seed : (Math.floor(Math.random() * 1e9) | 0);
-    draft = buildDraft(scored, { budget, jitter, rng: mulberry32(usedSeed), lockedIds });
+    draft = buildDraft(scored, { budget, jitter, rng: mulberry32(usedSeed), lockedIds, benchBoost });
     isAlternative = true;
   } else if (lockedIds.length) {
-    draft = buildBestDraft(scored, { budget, lockedIds });
+    draft = buildBestDraft(scored, { budget, lockedIds, benchBoost });
   }
 
   const rating = Math.max(0, Math.min(100, Math.round((draft.squadProjection / optProj) * 100)));
@@ -60,6 +62,7 @@ export async function onRequestGet({ request }) {
     JSON.stringify({
       targetGw,
       horizon,
+      benchBoost,
       isAlternative,
       seed: usedSeed,
       rating,

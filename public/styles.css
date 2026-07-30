@@ -177,6 +177,9 @@ button.ghost {
   background: var(--surface-2); color: var(--text); font-size: .95rem;
 }
 .inline-field input { width: 90px; }
+.switch { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.switch input { width: auto; accent-color: var(--pl-magenta); }
+.switch-label { font-size: .9rem; }
 .rating-banner {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
   background: var(--surface-2); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px;
