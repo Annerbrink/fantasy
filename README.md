@@ -54,14 +54,19 @@ Then open the app, go to **Setup**, enter your Team ID and League ID, and browse
    npx wrangler pages deploy public
    ```
 
-2. **Add the AI coaching key as a secret** (optional — the app works fully without it; the
-   AI panel just hides until a key is present). Never commit this.
-   ```bash
-   npx wrangler pages secret put ANTHROPIC_API_KEY
-   ```
-   Or in the dashboard: **Pages → your project → Settings → Variables and Secrets →
-   add secret `ANTHROPIC_API_KEY`**. (Optionally set `ANTHROPIC_MODEL`; defaults to
-   `claude-opus-5`.)
+2. **Enable AI coaching** (optional — the app works fully without it; the AI panel just
+   hides when no provider is configured). Two choices:
+
+   - **Cloudflare Workers AI — free, recommended.** The `[ai]` binding in `wrangler.toml`
+     (`binding = "AI"`) uses your Cloudflare account's free daily model allowance — no key,
+     no billing. If the binding isn't picked up automatically on a Git deploy, add it in
+     the dashboard: **Pages → your project → Settings → Functions → Bindings → add a
+     Workers AI binding named `AI`**. (Optionally set `WORKERS_AI_MODEL`; defaults to
+     `@cf/meta/llama-3.1-8b-instruct`.)
+   - **Claude — higher quality, paid.** Add a secret instead:
+     `npx wrangler pages secret put ANTHROPIC_API_KEY` (or via the dashboard). When present
+     it takes priority over Workers AI. Optionally set `ANTHROPIC_MODEL` (defaults to
+     `claude-opus-5`).
 
 3. **Add your custom domain**: **Pages → your project → Custom domains → Set up a domain**,
    and enter `fantasy.totteannerbrink.com`.

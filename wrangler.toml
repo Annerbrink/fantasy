@@ -9,7 +9,12 @@ directory = "./public"
 # official FPL API (cached at the Cloudflare edge via the Cache API). Your Team ID and
 # League ID live in your browser (localStorage), never on the server.
 
-# Optional: the Claude AI coaching layer reads ANTHROPIC_API_KEY from the environment.
-# Set it as a SECRET (never commit it):
-#   npx wrangler pages secret put ANTHROPIC_API_KEY
-# Without the key the app still works fully — only the AI narrative panel is hidden.
+# AI coaching layer. The /api/coach endpoint uses whichever provider is available:
+#   1. Cloudflare Workers AI via the `AI` binding below — free daily allowance on your
+#      Cloudflare account, no key or billing required. This is the default.
+#   2. Claude, if you set ANTHROPIC_API_KEY as a secret (higher quality, paid):
+#        npx wrangler pages secret put ANTHROPIC_API_KEY
+# Without either, the app still works fully — only the AI narrative panel is hidden.
+
+[ai]
+binding = "AI"
