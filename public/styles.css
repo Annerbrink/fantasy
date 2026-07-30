@@ -150,6 +150,24 @@ button.ghost {
   border-radius: 10px; padding: 8px 14px; font-weight: 600; cursor: pointer;
 }
 
+.draft-controls { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; }
+.inline-field span { display: block; font-size: .8rem; color: var(--text-dim); margin-bottom: 4px; font-weight: 600; }
+.inline-field input, .inline-field select {
+  padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-2); color: var(--text); font-size: .95rem;
+}
+.inline-field input { width: 90px; }
+.pitch-pos { margin-bottom: 4px; }
+.pitch-pos .pos-label { color: var(--text-dim); font-size: .72rem; text-transform: uppercase; letter-spacing: .4px; margin: 10px 0 6px; font-weight: 700; }
+.pitch-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.player-chip {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 8px 10px; min-width: 120px; flex: 1;
+}
+.player-chip .pc-name { font-weight: 700; font-size: .9rem; }
+.player-chip .pc-meta { color: var(--text-dim); font-size: .78rem; margin-top: 2px; display: flex; justify-content: space-between; gap: 8px; }
+.player-chip.bench { opacity: .72; }
+.player-chip.cap .pc-name::after { content: ' Ⓒ'; color: var(--pl-magenta); }
 .muted { color: var(--text-dim); }
 .spinner {
   width: 22px; height: 22px; border: 3px solid var(--border);

@@ -75,13 +75,15 @@ function projectOverFixtures(player, fixtures) {
 
 // Score every player and return an enriched, sortable list. `fixtures` is the raw FPL
 // fixtures array; `targetGw` is the gameweek we're planning for.
-export function scorePlayers(bootstrap, fixtures, targetGw) {
+export function scorePlayers(bootstrap, fixtures, targetGw, horizon = 0) {
   const teamById = new Map(bootstrap.teams.map((t) => [t.id, t]));
   return bootstrap.elements.map((p) => {
     const next1 = teamFixturesFrom(fixtures, p.team, targetGw, 1);
     const next3 = teamFixturesFrom(fixtures, p.team, targetGw, 3);
     const projNext = projectOverFixtures(p, next1);
     const projNext3 = projectOverFixtures(p, next3);
+    // Optional longer horizon (e.g. the draft builder projects several GWs ahead).
+    const projHorizon = horizon > 0 ? projectOverFixtures(p, teamFixturesFrom(fixtures, p.team, targetGw, horizon)) : projNext3;
     const price = p.now_cost / 10;
     return {
       id: p.id,
@@ -104,6 +106,7 @@ export function scorePlayers(bootstrap, fixtures, targetGw) {
       onSetPieces: p.corners_and_indirect_freekicks_order === 1 || p.direct_freekicks_order === 1,
       projNext: round(projNext),
       projNext3: round(projNext3),
+      projHorizon: round(projHorizon),
       // Value = projected points over the next 3 GWs per £m — the transfer/watchlist metric.
       value: price > 0 ? round(projNext3 / price) : 0,
       fixturesNext3: next3,

@@ -183,6 +183,66 @@ function renderRivals(a) {
 
 function emptyCard(msg) { return `<div class="card"><p class="empty">${esc(msg)}</p></div>`; }
 
+// ---- Draft builder ------------------------------------------------------------------
+function playerChip(p, { bench = false, captain = false } = {}) {
+  const cls = `player-chip${bench ? ' bench' : ''}${captain ? ' cap' : ''}`;
+  return `<div class="${cls}">
+    <div class="pc-name">${esc(p.name)}${p.onPens ? ' <small class="muted">(P)</small>' : ''}</div>
+    <div class="pc-meta"><span>${esc(p.team)} · ${money(p.price)}</span><span>${p.projHorizon} pts</span></div>
+  </div>`;
+}
+
+function renderDraft(d) {
+  if (!d || !d.complete) {
+    $('#draft-content').innerHTML = emptyCard('Could not build a full squad with these settings — try a higher budget.');
+    return;
+  }
+  const startIds = new Set(d.startingXI.map((p) => p.id));
+  const posRow = (label, players) => `<div class="pitch-pos"><div class="pos-label">${label}</div><div class="pitch-row">${
+    players.map((p) => playerChip(p, { captain: d.captain && p.id === d.captain.id })).join('')
+  }</div></div>`;
+
+  const xiByPos = (pos) => d.startingXI.filter((p) => p.position === pos);
+
+  $('#draft-content').innerHTML = `
+    <div class="card">
+      <h2>Suggested squad <span class="gw">· GW ${d.targetGw} · ${d.horizon}-GW projection</span></h2>
+      <div class="grid" style="margin-bottom:14px">
+        ${statTile('Total cost', money(d.totalCost))}
+        ${statTile('In the bank', money(d.remaining))}
+        ${statTile('Formation', d.formation)}
+        ${statTile('XI projected', d.projectedPoints + ' pts')}
+        ${d.captain ? statTile('Captain', esc(d.captain.name)) : ''}
+      </div>
+      <p class="hint">Starting XI (captain Ⓒ):</p>
+      ${posRow('Goalkeeper', xiByPos('GKP'))}
+      ${posRow('Defenders', xiByPos('DEF'))}
+      ${posRow('Midfielders', xiByPos('MID'))}
+      ${posRow('Forwards', xiByPos('FWD'))}
+      <p class="hint" style="margin-top:14px">Bench:</p>
+      <div class="pitch-row">${d.bench.map((p) => playerChip(p, { bench: true })).join('')}</div>
+    </div>`;
+}
+
+async function buildDraft() {
+  const budget = $('#draft-budget').value.trim() || '100';
+  const horizon = $('#draft-horizon').value;
+  $('#draft-content').innerHTML = `<div class="card"><p class="empty"><span class="spinner"></span> Optimising your squad…</p></div>`;
+  try {
+    const res = await fetch(`/api/draft?budget=${encodeURIComponent(budget)}&horizon=${encodeURIComponent(horizon)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    renderDraft(await res.json());
+  } catch (e) {
+    $('#draft-content').innerHTML = `<div class="card"><div class="error-box">Couldn't build the squad: ${esc(e.message)}</div></div>`;
+  }
+}
+$('#draft-build').addEventListener('click', buildDraft);
+// Build once the first time the Draft tab is opened.
+let draftLoaded = false;
+document.querySelector('.tab[data-tab="draft"]').addEventListener('click', () => {
+  if (!draftLoaded) { draftLoaded = true; buildDraft(); }
+});
+
 // ---- AI usage badge -----------------------------------------------------------------
 async function refreshUsage() {
   const badge = $('#usage-badge');

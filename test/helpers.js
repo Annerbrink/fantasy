@@ -24,18 +24,16 @@ export function makeElement(over = {}) {
   };
 }
 
-export function makeBootstrap(elements) {
+export function makeBootstrap(elements, teamCount = 3) {
+  const names = ['ARS', 'BHA', 'CHE', 'LIV', 'MCI', 'MUN', 'NEW', 'TOT', 'AVL', 'WHU', 'BOU', 'CRY'];
+  const teams = Array.from({ length: teamCount }, (_, i) => ({ id: i + 1, short_name: names[i] || `T${i + 1}` }));
   return {
     events: [
       { id: 1, finished: false, is_current: false, is_next: true },
       { id: 2, finished: false, is_current: false, is_next: false },
       { id: 3, finished: false, is_current: false, is_next: false },
     ],
-    teams: [
-      { id: 1, short_name: 'ARS' },
-      { id: 2, short_name: 'BHA' },
-      { id: 3, short_name: 'CHE' },
-    ],
+    teams,
     element_types: [
       { id: 1, singular_name_short: 'GKP' },
       { id: 2, singular_name_short: 'DEF' },

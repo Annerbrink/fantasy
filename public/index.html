@@ -18,6 +18,7 @@
         <button class="tab" data-tab="transfers">Transfers</button>
         <button class="tab" data-tab="captain">Captain &amp; Chips</button>
         <button class="tab" data-tab="rivals">Rivals</button>
+        <button class="tab" data-tab="draft">Draft</button>
         <button class="tab" data-tab="setup">Setup</button>
       </nav>
     </div>
@@ -48,6 +49,30 @@
     <!-- Rivals -->
     <section id="tab-rivals" class="tab-panel hidden">
       <div id="rivals-content"></div>
+    </section>
+
+    <!-- Draft / squad builder -->
+    <section id="tab-draft" class="tab-panel hidden">
+      <div class="card">
+        <h2>Draft builder</h2>
+        <p class="hint">The best-value 15-man squad within budget and the FPL rules (2-5-5-3, max 3 per club), projected over your chosen horizon. Ideal for GW1, a Wildcard, or a Free Hit.</p>
+        <div class="draft-controls">
+          <label class="inline-field"><span>Budget £m</span>
+            <input type="text" id="draft-budget" inputmode="decimal" value="100" />
+          </label>
+          <label class="inline-field"><span>Project over</span>
+            <select id="draft-horizon">
+              <option value="1">Next GW</option>
+              <option value="3">Next 3 GWs</option>
+              <option value="5" selected>Next 5 GWs</option>
+              <option value="8">Next 8 GWs</option>
+              <option value="10">Next 10 GWs</option>
+            </select>
+          </label>
+          <button class="primary" id="draft-build">Build squad</button>
+        </div>
+      </div>
+      <div id="draft-content"></div>
     </section>
 
     <!-- Setup -->
