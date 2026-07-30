@@ -251,6 +251,8 @@ function brief(p) {
     onPens: p.onPens,
     minutes: p.minutes || 0,
     nailed: p.nailed || false,
+    // Per-gameweek projection so the Draft tab can step through GWs (a DGW is summed, a BGW 0).
+    pointsByGw: p.pointsByGw || [],
   };
 }
 

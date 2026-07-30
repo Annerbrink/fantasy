@@ -75,7 +75,7 @@ function gainPill(net) {
 // Inline-SVG bar chart of projected points per gameweek. Returns an HTML string (the app
 // renders via innerHTML). Doubles are highlighted, blanks shown as faint gaps. Self-contained
 // — no chart library — so it works within the Pages CSP.
-function pointsChart(series, { heading, subtitle } = {}) {
+function pointsChart(series, { heading, subtitle, selectedGw = null } = {}) {
   if (!series || !series.length) return '';
   const n = series.length;
   const max = Math.max(1, ...series.map((s) => s.points));
@@ -88,7 +88,8 @@ function pointsChart(series, { heading, subtitle } = {}) {
     const bh = Math.max(1, Math.round((s.points / max) * innerH));
     const x = padL + i * (barW + gap);
     const y = padT + (innerH - bh);
-    const cls = s.points <= 0.01 ? 'blank' : s.points > max * 0.66 ? 'dgw' : '';
+    const sel = selectedGw != null && s.gw === selectedGw ? ' sel' : '';
+    const cls = (s.points <= 0.01 ? 'blank' : s.points > max * 0.66 ? 'dgw' : '') + sel;
     return `<g>
       <title>GW${s.gw}: ${s.points} pts</title>
       <rect class="bar ${cls}" x="${x}" y="${y}" width="${barW}" height="${bh}" rx="3"></rect>
@@ -427,23 +428,39 @@ function rankGainCard(r) {
 }
 
 // ---- Draft builder ------------------------------------------------------------------
-function playerChip(p, { bench = false, captain = false } = {}) {
-  const cls = `player-chip${bench ? ' bench' : ''}${captain ? ' cap' : ''}`;
+function playerChip(p, { bench = false, captain = false, gwPoints = null } = {}) {
+  // When a gameweek is selected, show that GW's projection (horizon total in the tooltip);
+  // otherwise show the horizon total. A blank GW (0) dims the chip.
+  const perGw = gwPoints != null;
+  const pts = perGw ? gwPoints : p.projHorizon;
+  const blank = perGw && gwPoints <= 0.01;
+  const cls = `player-chip${bench ? ' bench' : ''}${captain ? ' cap' : ''}${blank ? ' blank' : ''}`;
   const nailed = p.nailed ? `<span class="nailed-dot" title="Nailed-on starter (${(p.minutes || 0).toLocaleString()} mins)">●</span>` : '';
+  const ptsTitle = perGw ? ` title="${p.projHorizon} pts over the horizon"` : '';
   return `<div class="${cls}">
     <div class="pc-name">${esc(p.name)}${nailed}${p.onPens ? ' <small class="muted">(P)</small>' : ''}</div>
-    <div class="pc-meta"><span>${esc(p.team)} · ${money(p.price)}</span><span>${p.projHorizon} pts</span></div>
+    <div class="pc-meta"><span>${esc(p.team)} · ${money(p.price)}</span><span${ptsTitle}>${pts} pts</span></div>
   </div>`;
 }
+
+// The draft the tab is currently showing, plus which gameweek the stepper is on, so the ◀/▶
+// arrows can re-render the same squad focused on a different GW without refetching.
+let lastDraft = null;
+let draftGwIndex = 0;
 
 function renderDraft(d) {
   if (!d || !d.complete) {
     $('#draft-content').innerHTML = emptyCard('Could not build a full squad with these settings — try a higher budget.');
     return;
   }
-  const startIds = new Set(d.startingXI.map((p) => p.id));
+  const series = d.pointsByGw || [];
+  draftGwIndex = Math.max(0, Math.min(draftGwIndex, series.length - 1));
+  const selected = series[draftGwIndex] || null;
+  const selectedGw = selected ? selected.gw : null;
+  const gwPointsFor = (p) => (selectedGw != null ? p.pointsByGw?.find((g) => g.gw === selectedGw)?.points ?? 0 : null);
+
   const posRow = (label, players) => `<div class="pitch-pos"><div class="pos-label">${label}</div><div class="pitch-row">${
-    players.map((p) => playerChip(p, { captain: d.captain && p.id === d.captain.id })).join('')
+    players.map((p) => playerChip(p, { captain: d.captain && p.id === d.captain.id, gwPoints: gwPointsFor(p) })).join('')
   }</div></div>`;
 
   const xiByPos = (pos) => d.startingXI.filter((p) => p.position === pos);
@@ -452,6 +469,18 @@ function renderDraft(d) {
   const title = d.isAlternative
     ? `Alternative squad <span class="gw">· seed ${d.seed} · GW ${d.targetGw} · ${d.horizon}-GW</span>`
     : `Optimal squad <span class="gw">· GW ${d.targetGw} · ${d.horizon}-GW projection</span>`;
+
+  // Gameweek stepper: cycle the pitch through each GW in the horizon and show that week's total.
+  const xiGwTotal = selected ? Math.round(selected.points * 10) / 10 : null;
+  const stepper = series.length
+    ? `<div class="gw-stepper">
+        <button class="ghost gw-nav" id="draft-gw-prev" ${draftGwIndex <= 0 ? 'disabled' : ''} aria-label="Previous gameweek">◀</button>
+        <div class="gw-stepper-label"><strong>GW ${selectedGw}</strong> · <span class="gw-total">${xiGwTotal} pts</span> projected XI
+          <div class="muted">Gameweek ${draftGwIndex + 1} of ${series.length} · use ◀ ▶ or arrow keys</div>
+        </div>
+        <button class="ghost gw-nav" id="draft-gw-next" ${draftGwIndex >= series.length - 1 ? 'disabled' : ''} aria-label="Next gameweek">▶</button>
+      </div>`
+    : '';
 
   $('#draft-content').innerHTML = `
     <div class="card">
@@ -468,15 +497,29 @@ function renderDraft(d) {
         ${statTile('XI projected', d.projectedPoints + ' pts')}
         ${d.captain ? statTile('Captain', esc(d.captain.name)) : ''}
       </div>
-      <p class="hint">Starting XI (captain Ⓒ):</p>
+      ${stepper}
+      <p class="hint">Starting XI (captain Ⓒ)${selectedGw != null ? ` — points shown for <strong>GW ${selectedGw}</strong>` : ''}:</p>
       ${posRow('Goalkeeper', xiByPos('GKP'))}
       ${posRow('Defenders', xiByPos('DEF'))}
       ${posRow('Midfielders', xiByPos('MID'))}
       ${posRow('Forwards', xiByPos('FWD'))}
       <p class="hint" style="margin-top:14px">Bench:</p>
-      <div class="pitch-row">${d.bench.map((p) => playerChip(p, { bench: true })).join('')}</div>
+      <div class="pitch-row">${d.bench.map((p) => playerChip(p, { bench: true, gwPoints: gwPointsFor(p) })).join('')}</div>
     </div>
-    ${pointsChart(d.pointsByGw, { heading: 'Squad projected points', subtitle: 'Starting XI projection per gameweek over your chosen horizon.' })}`;
+    ${pointsChart(series, { heading: 'Squad projected points', subtitle: 'Starting XI projection per gameweek over your chosen horizon. Tap ◀ ▶ above to focus a week.', selectedGw })}`;
+
+  // Wire the stepper (re-renders the same draft focused on the new GW).
+  $('#draft-gw-prev')?.addEventListener('click', () => stepDraftGw(-1));
+  $('#draft-gw-next')?.addEventListener('click', () => stepDraftGw(1));
+}
+
+// Move the draft's selected gameweek and re-render, clamped to the horizon.
+function stepDraftGw(delta) {
+  if (!lastDraft?.pointsByGw?.length) return;
+  const next = draftGwIndex + delta;
+  if (next < 0 || next >= lastDraft.pointsByGw.length) return;
+  draftGwIndex = next;
+  renderDraft(lastDraft);
 }
 
 // ---- Locked (must-have) players -----------------------------------------------------
@@ -611,11 +654,22 @@ async function buildDraft(randomize = false) {
   try {
     const res = await fetch(`/api/draft?budget=${encodeURIComponent(budget)}&horizon=${encodeURIComponent(horizon)}${rnd}${lock}${bb}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    renderDraft(await res.json());
+    lastDraft = await res.json();
+    draftGwIndex = 0; // a fresh build starts on the first gameweek
+    renderDraft(lastDraft);
   } catch (e) {
     $('#draft-content').innerHTML = `<div class="card"><div class="error-box">Couldn't build the squad: ${esc(e.message)}</div></div>`;
   }
 }
+
+// Left/Right arrow keys step the draft gameweek while the Draft tab is open.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  const draftOpen = !$('#tab-draft')?.classList.contains('hidden');
+  const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
+  if (!draftOpen || typing || !lastDraft) return;
+  stepDraftGw(e.key === 'ArrowLeft' ? -1 : 1);
+});
 // Load the manager's current FPL squad and lock it in — start from your real team, then
 // unlock individual players to let the optimiser suggest replacements.
 async function loadMyTeam() {

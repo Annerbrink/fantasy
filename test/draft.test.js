@@ -70,6 +70,20 @@ test('buildDraft picks a valid starting XI and formation', () => {
   assert.equal(draft.startingXI.filter((p) => p.position === 'GKP').length, 1);
 });
 
+test('draft players carry a per-gameweek projection for the GW stepper', () => {
+  const boot = bigBootstrap();
+  const scored = scorePlayers(boot, makeFixtures(), 1, 5);
+  const draft = buildBestDraft(scored, { budget: 100 });
+  const someone = draft.startingXI[0];
+  assert.ok(Array.isArray(someone.pointsByGw) && someone.pointsByGw.length > 0, 'starting XI carries pointsByGw');
+  assert.ok(someone.pointsByGw.every((g) => typeof g.gw === 'number' && typeof g.points === 'number'));
+  assert.ok(draft.bench[0].pointsByGw.length > 0, 'bench carries pointsByGw too');
+  // Per-player GW points sum across the XI to the squad-level series for that GW.
+  const gw1 = draft.pointsByGw[0].gw;
+  const xiSum = draft.startingXI.reduce((s, p) => s + (p.pointsByGw.find((g) => g.gw === gw1)?.points || 0), 0);
+  assert.ok(Math.abs(xiSum - draft.pointsByGw[0].points) < 0.05, 'XI per-player GW points sum to the squad total');
+});
+
 test('mulberry32 is deterministic for a given seed', () => {
   const a = mulberry32(12345);
   const b = mulberry32(12345);

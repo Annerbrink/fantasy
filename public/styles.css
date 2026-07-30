@@ -223,14 +223,24 @@ button.ghost {
 .player-chip .pc-name { font-weight: 700; font-size: .9rem; }
 .player-chip .pc-meta { color: var(--text-dim); font-size: .78rem; margin-top: 2px; display: flex; justify-content: space-between; gap: 8px; }
 .player-chip.bench { opacity: .72; }
+.player-chip.blank { opacity: .45; }
 .player-chip.cap .pc-name::after { content: ' Ⓒ'; color: var(--pl-magenta); }
 .nailed-dot { color: var(--pl-green); font-size: .7em; vertical-align: middle; margin-left: 4px; }
+
+/* Draft gameweek stepper */
+.gw-stepper { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 4px 0 14px; }
+.gw-stepper-label { text-align: center; line-height: 1.35; }
+.gw-stepper-label .gw-total { color: var(--pl-magenta); font-weight: 700; }
+.gw-stepper-label .muted { font-size: .76rem; }
+.gw-nav { font-size: 1rem; line-height: 1; padding: 8px 14px; min-width: 44px; }
+.gw-nav:disabled { opacity: .4; cursor: default; }
 /* Points-per-gameweek bar chart (inline SVG, theme-aware). */
 .chart-scroll { overflow-x: auto; }
 .pts-chart { width: 100%; min-width: 320px; height: auto; display: block; }
 .pts-chart .bar { fill: var(--pl-magenta); }
 .pts-chart .bar.dgw { fill: var(--pl-green); }
 .pts-chart .bar.blank { fill: var(--border); }
+.pts-chart .bar.sel { stroke: var(--pl-cyan); stroke-width: 3; paint-order: stroke; }
 .pts-chart .bar-val { fill: var(--text); font-size: 11px; font-weight: 600; }
 .pts-chart .bar-lbl { fill: var(--text-dim); font-size: 10px; }
 .chart-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: .78rem; color: var(--text-dim); margin-top: 8px; }
