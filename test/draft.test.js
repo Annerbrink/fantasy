@@ -139,14 +139,27 @@ test('a jittered draft stays legal, and the multi-start best is the projection c
   assert.ok(best.squadProjection >= alt.squadProjection - 1e-6);
 });
 
-test('by default the backup goalkeeper is the cheapest available (one keeper plays)', () => {
+test('by default the backup goalkeeper is the cheapest option (one keeper plays)', () => {
   const boot = bigBootstrap();
   const scored = scorePlayers(boot, makeFixtures(), 1, 5);
   const draft = buildBestDraft(scored, { budget: 100 });
   const gkPrices = draft.squad.GKP.map((p) => p.price).sort((a, b) => a - b);
   const cheapestGk = Math.min(...scored.filter((p) => p.position === 'GKP').map((p) => p.price));
   assert.equal(draft.squad.GKP.length, 2);
-  assert.equal(gkPrices[0], cheapestGk, 'the backup keeper is the cheapest option');
+  assert.equal(gkPrices[0], cheapestGk, 'the backup keeper is still at the cheapest price point');
+});
+
+test('at the cheapest keeper price, the reserved backup is a playing keeper (not a 0-minute dud)', () => {
+  const boot = bigBootstrap();
+  // Two £4.0m keepers: one nailed (plays), one a 0-minute bench-warmer. The backup should be
+  // the nailed one — same price, but actual cover.
+  const scored = scorePlayers(boot, makeFixtures(), 1, 5).map((p) => ({ ...p }));
+  const cheapGks = scored.filter((p) => p.position === 'GKP').sort((a, b) => a.price - b.price).slice(0, 2);
+  cheapGks[0].price = 4.0; cheapGks[0].nailed = true; cheapGks[0].projHorizon = 8; cheapGks[0].projNext3 = 5;
+  cheapGks[1].price = 4.0; cheapGks[1].nailed = false; cheapGks[1].projHorizon = 1; cheapGks[1].projNext3 = 0.5;
+  const draft = buildBestDraft(scored, { budget: 100 });
+  const backup = draft.squad.GKP.slice().sort((a, b) => a.price - b.price)[0];
+  assert.equal(backup.id, cheapGks[0].id, 'the nailed £4.0m keeper is chosen over the 0-minute one');
 });
 
 test('Bench Boost mode does not force the cheapest backup keeper', () => {

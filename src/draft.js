@@ -154,14 +154,18 @@ export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.rand
     else { lockedSet.add(id); lockedIncluded.push(brief(p)); }
   }
 
-  // Only one keeper plays each week, so the backup GK should be the cheapest available —
-  // spend the saved budget on outfield. Reserve it here; the starting GK is optimised by the
-  // greedy fill below. Protect it from the improvement pass so it stays cheap.
-  const cheapestOfType = (et) =>
-    pool.filter((p) => p.elementType === et && !ownedIds.has(p.id)).sort((a, b) => a.price - b.price)[0];
+  // Only one keeper plays each week, so the backup GK should be cheap — spend the saved budget
+  // on outfield. But among equally-cheap keepers, prefer one who actually plays (nailed, higher
+  // projection) over a £4.0 bench-warmer who'll never return a point: same price, useful cover
+  // for injuries and Bench Boost. Reserve it here; the starting GK is optimised by the greedy
+  // fill below, and it's protected from the improvement pass so it stays cheap.
+  const cheapestBackupGk = () =>
+    pool
+      .filter((p) => p.elementType === 1 && !ownedIds.has(p.id))
+      .sort((a, b) => a.price - b.price || (b.nailed ? 1 : 0) - (a.nailed ? 1 : 0) || proj(b) - proj(a))[0];
   let backupGkId = null;
   if (!benchBoost && need[1] >= 1) {
-    const gk = cheapestOfType(1);
+    const gk = cheapestBackupGk();
     if (gk && tryAdd(gk) === null) backupGkId = gk.id;
   }
   const protectedIds = new Set(lockedSet);
