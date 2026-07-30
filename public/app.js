@@ -276,6 +276,7 @@ function renderRivals(a) {
       </table></div>
     </div>
     ${r.hasSquadData ? `
+    ${rankGainCard(r)}
     <div class="card"><h2>League template</h2><p class="hint">Owned by at least half your rivals — being short here is a risk.</p>${list(r.template, 'No squad data yet (pre-season).')}</div>
     <div class="card"><h2>Your differentials</h2><p class="hint">You own these; few rivals do — your route to gaining rank.</p>${list(r.differentials, 'Load your Team ID to see differentials.')}</div>
     <div class="card"><h2>Threats you're missing</h2><p class="hint">Popular among rivals but not in your squad.</p>${list(r.threats, 'None — you cover the popular picks.')}</div>
@@ -283,6 +284,31 @@ function renderRivals(a) {
 }
 
 function emptyCard(msg) { return `<div class="card"><p class="empty">${esc(msg)}</p></div>`; }
+
+// Rank-gain: the players that most improve your standing vs this specific league.
+function rankGainCard(r) {
+  const targets = r.rankGainTargets || [];
+  const risks = r.templateRisks || [];
+  if (!targets.length && !risks.length) return '';
+  const row = (p) => `<tr>
+    <td><strong>${esc(p.name)}</strong> <small class="muted">${esc(p.team)} · ${esc(p.position)}</small></td>
+    <td class="num">${p.price != null ? money(p.price) : '—'}</td>
+    <td class="num">${p.projNext3 ?? '—'}</td>
+    <td class="num">${p.leagueOwnership}%</td>
+    <td class="num"><strong>${p.rankGain ?? '—'}</strong></td>
+    <td class="num">${lockBtn(p)}</td>
+  </tr>`;
+  const table = (rows) => `<div class="table-scroll"><table>
+    <thead><tr><th>Player</th><th class="num">Price</th><th class="num">Proj 3GW</th><th class="num">Rivals own</th><th class="num">Rank-gain</th><th></th></tr></thead>
+    <tbody>${rows.map(row).join('')}</tbody></table></div>`;
+  return `
+    <div class="card">
+      <h2>🎯 Rank-gain targets</h2>
+      <p class="hint">Best differentials to climb <em>this</em> league — strong projection that few rivals own. Rank-gain = projected points × share of rivals who don't own them.</p>
+      ${targets.length ? table(targets) : '<p class="muted">No standout differentials right now.</p>'}
+      ${risks.length ? `<p class="hint" style="margin-top:12px">⚠ Template you're missing (cover these or risk losing rank if they haul):</p>${table(risks)}` : ''}
+    </div>`;
+}
 
 // ---- Draft builder ------------------------------------------------------------------
 function playerChip(p, { bench = false, captain = false } = {}) {

@@ -99,6 +99,7 @@ export function buildAdvice(data) {
         players: picksToPlayerIds(rp.picks),
       })),
       playerNameById,
+      scoredById,
     });
   }
 

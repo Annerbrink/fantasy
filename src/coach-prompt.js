@@ -38,6 +38,7 @@ export function buildCoachMessages(advice) {
     rivalTemplate: (rivals?.template || []).slice(0, 6).map((p) => `${p.name}${p.owned ? ' (owned)' : ''}`),
     yourDifferentials: (rivals?.differentials || []).slice(0, 5).map((p) => p.name),
     rivalThreats: (rivals?.threats || []).slice(0, 5).map((p) => p.name),
+    rankGainTargets: (rivals?.rankGainTargets || []).slice(0, 5).map((p) => `${p.name} (${p.team}, ${p.leagueOwnership}% owned, rank-gain ${p.rankGain})`),
     bestFixtureRuns: (fixtureOutlook?.best || []).slice(0, 5).map((t) => `${t.team} (avg FDR ${t.avgDifficulty})`),
     toughestRuns: (fixtureOutlook?.tough || []).slice(0, 3).map((t) => `${t.team} (avg FDR ${t.avgDifficulty})`),
     bestAttackingGameweeks: [...(attackGws || [])]
@@ -58,7 +59,8 @@ export function buildCoachMessages(advice) {
     'Use the fixture data: favour transfers into teams with the kindest upcoming runs (good attacking sides facing weak opponents) and time chips around the best attacking gameweeks provided.',
     'Factor in price changes: prefer buying priceRisers before they rise, and consider selling priceFallers before they drop.',
     'Weight the expertGuidance (FPL Harry): favour nailed 90-minute players, penalty/set-piece takers and Defcon options; captain boring (Haaland or Bruno); be patient and avoid panic transfers; target the listed defences for clean sheets. The expert value picks and defences-to-target are current players/teams you may reference.',
-    'Structure: (1) one-line headline verdict, (2) transfers (lean on fixture swings and price timing), (3) captain, (4) chips if relevant this window, (5) one mini-league angle to gain rank.',
+    'For the mini-league angle, use rankGainTargets — to climb the league, prefer strong players your rivals do NOT own (differentials), and note any high-owned template you are missing that could cost you rank.',
+    'Structure: (1) one-line headline verdict, (2) transfers (lean on fixture swings and price timing), (3) captain, (4) chips if relevant this window, (5) one mini-league angle to gain rank (use rankGainTargets).',
     'Be specific and brief. Do not invent players, prices, or fixtures beyond the data provided. Do not include any internal or system XML tags in your response.',
   ].join(' ');
 
