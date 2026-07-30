@@ -58,7 +58,14 @@ function statTile(label, value) {
 }
 
 function playerCell(p) {
-  return `<span class="player">${esc(p.name)} <small>${esc(p.team)} · ${esc(p.position)} · ${money(p.price)}</small></span>`;
+  return `<span class="player">${playerLink(p.id, p.name)} <small>${esc(p.team)} · ${esc(p.position)} · ${money(p.price)}</small></span>`;
+}
+
+// A clickable player name — opens the match-schedule popup. Falls back to plain text if the
+// row carries no id. One global handler (below) picks up any [data-player-id] element.
+function playerLink(id, name) {
+  if (id == null) return esc(name);
+  return `<span class="player-link" data-player-id="${id}" data-player-name="${esc(name)}">${esc(name)}</span>`;
 }
 
 // A small "lock into draft" button for table rows.
@@ -194,7 +201,7 @@ function priceWatchCard(a) {
   const pw = a.priceWatch;
   if (!pw || (!pw.risers?.length && !pw.fallers?.length)) return '';
   const row = (p) => `<tr>
-    <td><strong>${esc(p.name)}</strong> <small class="muted">${esc(p.team)}</small></td>
+    <td><strong>${playerLink(p.id, p.name)}</strong> <small class="muted">${esc(p.team)}</small></td>
     <td class="num">${money(p.price)}</td>
     <td class="num">${p.changedToday ? `<span class="pill ${p.changedToday > 0 ? 'pos' : 'neg'}">${p.changedToday > 0 ? '+' : ''}£${(p.changedToday / 10).toFixed(1)}m today</span>` : ''}</td>
   </tr>`;
@@ -408,7 +415,7 @@ function rankGainCard(r) {
   const risks = r.templateRisks || [];
   if (!targets.length && !risks.length) return '';
   const row = (p) => `<tr>
-    <td><strong>${esc(p.name)}</strong> <small class="muted">${esc(p.team)} · ${esc(p.position)}</small></td>
+    <td><strong>${playerLink(p.id, p.name)}</strong> <small class="muted">${esc(p.team)} · ${esc(p.position)}</small></td>
     <td class="num">${p.price != null ? money(p.price) : '—'}</td>
     <td class="num">${p.projNext3 ?? '—'}</td>
     <td class="num">${p.leagueOwnership}%</td>
@@ -440,7 +447,7 @@ function playerChip(p, { bench = false, captain = false, gwPoints = null } = {})
   const nailed = p.nailed ? `<span class="nailed-dot" title="Nailed-on starter (${(p.minutes || 0).toLocaleString()} mins)">●</span>` : '';
   const ptsTitle = doubled ? ` title="${gwPoints} × 2 (captain)"` : (perGw ? ` title="${p.projHorizon} pts over the horizon"` : '');
   const capX2 = doubled ? ' <small class="cap-x2">©×2</small>' : '';
-  return `<div class="${cls}">
+  return `<div class="${cls}" data-player-id="${p.id}" data-player-name="${esc(p.name)}" title="See ${esc(p.name)}'s fixtures">
     <div class="pc-name">${esc(p.name)}${nailed}${p.onPens ? ' <small class="muted">(P)</small>' : ''}</div>
     <div class="pc-meta"><span>${esc(p.team)} · ${money(p.price)}</span><span${ptsTitle}>${shown} pts${capX2}</span></div>
   </div>`;
@@ -582,6 +589,64 @@ function toast(msg) {
   clearTimeout(toast._t);
   toast._t = setTimeout(() => t.classList.remove('show'), 2600);
 }
+
+// ---- Player match-schedule popup ----------------------------------------------------
+// Clamp a fixture difficulty to a colour class (1-2 easy → green, 3 neutral, 4-5 hard → red).
+function fdrClass(d) { return `fdr-${Math.max(1, Math.min(5, Math.round(d || 3)))}`; }
+
+let playerModalEl = null;
+function closePlayerModal() {
+  if (!playerModalEl) return;
+  playerModalEl.remove();
+  playerModalEl = null;
+  document.removeEventListener('keydown', onModalKey);
+}
+function onModalKey(e) { if (e.key === 'Escape') closePlayerModal(); }
+
+// Open a popup with the player's upcoming fixtures + projected points (fetched by id).
+async function openPlayerModal(id, name) {
+  if (!id) return;
+  closePlayerModal();
+  const el = document.createElement('div');
+  el.className = 'modal-backdrop';
+  el.innerHTML = `<div class="player-modal" role="dialog" aria-modal="true" aria-label="Player schedule">
+    <button class="modal-close" aria-label="Close">✕</button>
+    <div class="modal-body"><p class="empty"><span class="spinner"></span> Loading ${esc(name || 'player')}…</p></div>
+  </div>`;
+  document.body.appendChild(el);
+  playerModalEl = el;
+  el.addEventListener('click', (e) => { if (e.target === el) closePlayerModal(); });
+  el.querySelector('.modal-close').addEventListener('click', closePlayerModal);
+  document.addEventListener('keydown', onModalKey);
+  try {
+    const p = await (await fetch(`/api/player?id=${encodeURIComponent(id)}`)).json();
+    if (p.error) throw new Error(p.error);
+    el.querySelector('.modal-body').innerHTML = playerModalBody(p);
+  } catch (e) {
+    el.querySelector('.modal-body').innerHTML = `<div class="error-box">Couldn't load schedule: ${esc(e.message)}</div>`;
+  }
+}
+
+function playerModalBody(p) {
+  const rows = (p.schedule || []).map((g) => {
+    const fx = g.fixtures.length
+      ? g.fixtures.map((f) => `${esc(f.opponent)} <span class="badge-fdr ${fdrClass(f.difficulty)}">${f.home ? 'H' : 'A'} ${f.difficulty}</span>`).join(' ')
+      : '<span class="muted">Blank</span>';
+    return `<tr><td>GW ${g.gw}</td><td>${fx}</td><td class="num">${g.points}</td></tr>`;
+  }).join('');
+  return `<h3 class="modal-title">${esc(p.name)} <small class="muted">${esc(p.team)} · ${esc(p.position)} · ${money(p.price)}</small></h3>
+    <p class="hint">Next ${p.horizon} gameweeks · <strong>${p.total}</strong> projected pts</p>
+    <div class="table-scroll"><table>
+      <thead><tr><th>GW</th><th>Fixture</th><th class="num">Proj</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+}
+
+// One delegated handler makes any [data-player-id] element (chips, table names) open the popup.
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-player-id]');
+  if (t) openPlayerModal(t.dataset.playerId, t.dataset.playerName);
+});
 
 // Shared lock action — used by the search box and the ＋ buttons in tables.
 function lockPlayerObj(p, { notify = false } = {}) {
@@ -725,7 +790,7 @@ async function loadStats(metric) {
 
     const rows = data.leaders.map((p, i) => `<tr>
       <td class="num">${i + 1}</td>
-      <td><strong>${esc(p.name)}</strong> <small class="muted">${esc(p.team)} · ${esc(p.position)}</small></td>
+      <td><strong>${playerLink(p.id, p.name)}</strong> <small class="muted">${esc(p.team)} · ${esc(p.position)}</small></td>
       <td class="num">${money(p.price)}</td>
       <td class="num"><strong>${p.value}</strong></td>
       <td class="num muted">${(p.minutes || 0).toLocaleString()}'</td>
