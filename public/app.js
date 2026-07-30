@@ -228,8 +228,8 @@ function renderCaptain(a) {
 
   const chips = (a.chips || []).map((ch) => `
     <div class="chip-row">
-      <div class="chip-name">${esc(ch.chip)}${ch.when ? ` <span class="chip-when">${esc(ch.when)}</span>` : ''}</div>
-      <div class="${ch.status === 'used' ? 'muted' : ''}">${esc(ch.recommendation)}</div>
+      <div class="chip-name">${esc(ch.chip)}${ch.when ? ` <span class="chip-when">${esc(ch.when)}</span>` : ''}${ch.status === 'urgent' ? ' <span class="pill neg">use soon</span>' : ''}</div>
+      <div class="${ch.status === 'used' ? 'muted' : ch.status === 'urgent' ? 'urgent-text' : ''}">${esc(ch.recommendation)}</div>
     </div>`).join('');
 
   const dgw = (a.dgwBgw || []).filter((r) => r.doubleTeams.length || r.blankTeams.length).slice(0, 6).map((r) =>
