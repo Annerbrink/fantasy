@@ -103,6 +103,20 @@ test('Triple Captain triples the captain on only the chosen gameweek', () => {
   assert.ok(tc.effectiveProjection > plain.effectiveProjection - 1e-6, 'Triple Captain adds points');
 });
 
+test('Bench Boost mode excludes non-playing players so the bench actually scores', () => {
+  const boot = bigBootstrap();
+  const scored = scorePlayers(boot, makeFixtures(), 1, 5).map((p) => ({ ...p }));
+  // Mark a couple of cheap forwards as non-playing 0-minute academy types.
+  const cheapFwds = scored.filter((p) => p.position === 'FWD').sort((a, b) => a.price - b.price).slice(0, 2);
+  for (const p of cheapFwds) { p.nailed = false; p.minutes = 0; }
+  const bb = buildBestDraft(scored, { budget: 100, benchBoostGw: 1 });
+  const squad = [...bb.startingXI, ...bb.bench];
+  assert.ok(!squad.some((p) => cheapFwds.some((c) => c.id === p.id)), 'no 0-minute player is picked under Bench Boost');
+  const normal = buildBestDraft(scored, { budget: 100 });
+  // Without Bench Boost the cheap enabler is allowed (not required, but the filter must be off).
+  assert.ok(normal.complete);
+});
+
 test('Bench Boost is applied to only the chosen gameweek', () => {
   const boot = bigBootstrap();
   const scored = scorePlayers(boot, makeFixtures(), 1, 5);

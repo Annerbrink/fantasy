@@ -142,7 +142,12 @@ export function buildBestDraft(scored, { budget = 100.0, attempts = 16, jitter =
 // that week the whole bench scores, so the squad is valued as 15; every other week only the XI
 // scores. Null = no Bench Boost planned in this horizon.
 export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.random, lockedIds = [], benchBoostGw = null, tripleCaptainGw = null } = {}) {
-  const pool = scored.filter((p) => available(p) && p.price > 0);
+  // In Bench Boost mode all 15 score that week, so a non-playing bench is a wasted chip —
+  // restrict the pool to players who actually feature (nailed, or with real minutes). Otherwise
+  // the cheapest way to fill a slot is a £4.0-4.5m academy player who never plays.
+  const PLAYS_MINUTES = 300;
+  const plays = (p) => p.nailed || (p.minutes || 0) >= PLAYS_MINUTES;
+  const pool = scored.filter((p) => available(p) && p.price > 0 && (benchBoostGw == null || plays(p)));
 
   // Perturbed selection score. jitter = 0 → true projection (the optimal squad); jitter > 0
   // → each player's rank is nudged by up to ±jitter, producing a plausible alternative.
