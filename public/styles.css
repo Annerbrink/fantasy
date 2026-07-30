@@ -225,6 +225,7 @@ button.ghost {
 .player-chip.bench { opacity: .72; }
 .player-chip.blank { opacity: .45; }
 .player-chip.cap .pc-name::after { content: ' Ⓒ'; color: var(--pl-magenta); }
+.cap-x2 { color: var(--pl-magenta); font-weight: 700; }
 .nailed-dot { color: var(--pl-green); font-size: .7em; vertical-align: middle; margin-left: 4px; }
 
 /* Draft gameweek stepper */

@@ -88,13 +88,17 @@ test('the optimal squad never scores fewer effective points than a locked varian
   }
 });
 
-test('effectiveProjection reflects the mode: XI+captain normally, all 15+captain under Bench Boost', () => {
+test('effectiveProjection sums the per-GW series and doubles the best starter each week', () => {
   const boot = bigBootstrap();
   const scored = scorePlayers(boot, makeFixtures(), 1, 5);
   const d = buildBestDraft(scored, { budget: 100, benchBoost: false });
-  // Normal: base is the XI only, so effective < the 15-man squad sum + captain.
-  assert.ok(d.effectiveProjection <= d.squadProjection + Math.max(...d.startingXI.map((p) => p.projHorizon)) + 1e-6);
-  assert.ok(d.effectiveProjection > d.projectedPoints, 'includes a captain bonus on top of the XI');
+  const seriesSum = d.pointsByGw.reduce((s, g) => s + g.points, 0);
+  assert.ok(Math.abs(d.effectiveProjection - seriesSum) < 0.05, 'effective = sum of per-GW points');
+  for (const g of d.pointsByGw) {
+    assert.ok(Math.abs(g.points - (g.base + g.captainPoints)) < 0.01, 'GW total = base + doubled captain');
+    if (g.base > 0) assert.ok(g.captainId != null, 'a captain is chosen each scoring GW');
+  }
+  assert.ok(d.effectiveProjection > d.projectedPoints, 'captain doubling adds points on top of the XI');
 });
 
 test('draft players carry a per-gameweek projection for the GW stepper', () => {
@@ -105,10 +109,10 @@ test('draft players carry a per-gameweek projection for the GW stepper', () => {
   assert.ok(Array.isArray(someone.pointsByGw) && someone.pointsByGw.length > 0, 'starting XI carries pointsByGw');
   assert.ok(someone.pointsByGw.every((g) => typeof g.gw === 'number' && typeof g.points === 'number'));
   assert.ok(draft.bench[0].pointsByGw.length > 0, 'bench carries pointsByGw too');
-  // Per-player GW points sum across the XI to the squad-level series for that GW.
+  // Per-player GW points sum across the XI to the squad-level series *base* (before captain).
   const gw1 = draft.pointsByGw[0].gw;
   const xiSum = draft.startingXI.reduce((s, p) => s + (p.pointsByGw.find((g) => g.gw === gw1)?.points || 0), 0);
-  assert.ok(Math.abs(xiSum - draft.pointsByGw[0].points) < 0.05, 'XI per-player GW points sum to the squad total');
+  assert.ok(Math.abs(xiSum - draft.pointsByGw[0].base) < 0.05, 'XI per-player GW points sum to the squad base');
 });
 
 test('mulberry32 is deterministic for a given seed', () => {

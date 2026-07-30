@@ -430,16 +430,19 @@ function rankGainCard(r) {
 // ---- Draft builder ------------------------------------------------------------------
 function playerChip(p, { bench = false, captain = false, gwPoints = null } = {}) {
   // When a gameweek is selected, show that GW's projection (horizon total in the tooltip);
-  // otherwise show the horizon total. A blank GW (0) dims the chip.
+  // otherwise show the horizon total. The captain's points are doubled that week. A blank GW
+  // (0) dims the chip.
   const perGw = gwPoints != null;
-  const pts = perGw ? gwPoints : p.projHorizon;
+  const doubled = perGw && captain; // captain scores double
+  const shown = perGw ? (doubled ? Math.round(gwPoints * 2 * 100) / 100 : gwPoints) : p.projHorizon;
   const blank = perGw && gwPoints <= 0.01;
   const cls = `player-chip${bench ? ' bench' : ''}${captain ? ' cap' : ''}${blank ? ' blank' : ''}`;
   const nailed = p.nailed ? `<span class="nailed-dot" title="Nailed-on starter (${(p.minutes || 0).toLocaleString()} mins)">●</span>` : '';
-  const ptsTitle = perGw ? ` title="${p.projHorizon} pts over the horizon"` : '';
+  const ptsTitle = doubled ? ` title="${gwPoints} × 2 (captain)"` : (perGw ? ` title="${p.projHorizon} pts over the horizon"` : '');
+  const capX2 = doubled ? ' <small class="cap-x2">©×2</small>' : '';
   return `<div class="${cls}">
     <div class="pc-name">${esc(p.name)}${nailed}${p.onPens ? ' <small class="muted">(P)</small>' : ''}</div>
-    <div class="pc-meta"><span>${esc(p.team)} · ${money(p.price)}</span><span${ptsTitle}>${pts} pts</span></div>
+    <div class="pc-meta"><span>${esc(p.team)} · ${money(p.price)}</span><span${ptsTitle}>${shown} pts${capX2}</span></div>
   </div>`;
 }
 
@@ -458,9 +461,13 @@ function renderDraft(d) {
   const selected = series[draftGwIndex] || null;
   const selectedGw = selected ? selected.gw : null;
   const gwPointsFor = (p) => (selectedGw != null ? p.pointsByGw?.find((g) => g.gw === selectedGw)?.points ?? 0 : null);
+  // The captain for the selected GW is the best starter that week (their points double); away
+  // from a GW view, fall back to the horizon captain.
+  const gwCaptainId = selected && selected.captainId != null ? selected.captainId : (d.captain ? d.captain.id : null);
+  const gwCaptainName = (d.startingXI.find((p) => p.id === gwCaptainId) || d.captain || {}).name || '—';
 
   const posRow = (label, players) => `<div class="pitch-pos"><div class="pos-label">${label}</div><div class="pitch-row">${
-    players.map((p) => playerChip(p, { captain: d.captain && p.id === d.captain.id, gwPoints: gwPointsFor(p) })).join('')
+    players.map((p) => playerChip(p, { captain: gwCaptainId != null && p.id === gwCaptainId, gwPoints: gwPointsFor(p) })).join('')
   }</div></div>`;
 
   const xiByPos = (pos) => d.startingXI.filter((p) => p.position === pos);
@@ -475,8 +482,8 @@ function renderDraft(d) {
   const stepper = series.length
     ? `<div class="gw-stepper">
         <button class="ghost gw-nav" id="draft-gw-prev" ${draftGwIndex <= 0 ? 'disabled' : ''} aria-label="Previous gameweek">◀</button>
-        <div class="gw-stepper-label"><strong>GW ${selectedGw}</strong> · <span class="gw-total">${xiGwTotal} pts</span> projected XI
-          <div class="muted">Gameweek ${draftGwIndex + 1} of ${series.length} · use ◀ ▶ or arrow keys</div>
+        <div class="gw-stepper-label"><strong>GW ${selectedGw}</strong> · <span class="gw-total">${xiGwTotal} pts</span> projected${d.benchBoost ? ' squad' : ' XI'}
+          <div class="muted">© ${esc(gwCaptainName)} doubled · GW ${draftGwIndex + 1} of ${series.length} · use ◀ ▶ or arrow keys</div>
         </div>
         <button class="ghost gw-nav" id="draft-gw-next" ${draftGwIndex >= series.length - 1 ? 'disabled' : ''} aria-label="Next gameweek">▶</button>
       </div>`
@@ -496,7 +503,7 @@ function renderDraft(d) {
         ${statTile('In the bank', money(d.remaining))}
         ${statTile('Formation', d.formation)}
         ${statTile(esc(d.objectiveLabel || 'XI + captain'), (d.effectiveProjection ?? d.projectedPoints) + ' pts')}
-        ${d.captain ? statTile('Captain', esc(d.captain.name)) : ''}
+        ${statTile(selectedGw != null ? `Captain · GW ${selectedGw}` : 'Captain', esc(gwCaptainName))}
       </div>
       ${stepper}
       <p class="hint">Starting XI (captain Ⓒ)${selectedGw != null ? ` — points shown for <strong>GW ${selectedGw}</strong>` : ''}:</p>

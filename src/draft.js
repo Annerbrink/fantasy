@@ -12,8 +12,6 @@
 //   - the builder reports the raw squad projection and fixture/value breakdown so callers
 //     can turn it into a 0-100 team rating (see functions/api/draft.js).
 
-import { sumPointsByGw } from './scoring.js';
-
 const SQUAD = { 1: 2, 2: 5, 3: 5, 4: 3 }; // elementType -> count
 const POS_NAME = { 1: 'GKP', 2: 'DEF', 3: 'MID', 4: 'FWD' };
 const MAX_PER_TEAM = 3;
@@ -22,14 +20,33 @@ function proj(p) {
   return p.projHorizon ?? p.projNext3 ?? 0;
 }
 
-// What the squad actually scores, and the single objective the optimiser, the rating and the
-// headline all share, so they can never disagree. Only the starting XI scores in a normal week
-// (all 15 under Bench Boost), and the captain doubles the best starter every week — so premiums
-// are valued for their captaincy, not just raw points-per-£m across 15.
+// Per-gameweek projected points for the squad, with the captain applied *each week*: the
+// captain is the highest-projecting starter that gameweek and their points are doubled (that's
+// how the armband works — and it can switch week to week, e.g. across a Double Gameweek). Only
+// the starting XI scores in a normal week; all 15 score under Bench Boost. Returns one entry
+// per GW: { gw, points (incl. captain), base (excl.), captainId, captainPoints }.
+export function squadSeries(startingXI, scorers) {
+  const gws = (startingXI[0]?.pointsByGw || []).map((g) => g.gw);
+  const ptOf = (p, gw) => p.pointsByGw?.find((g) => g.gw === gw)?.points || 0;
+  return gws.map((gw) => {
+    const base = scorers.reduce((s, p) => s + ptOf(p, gw), 0);
+    let captainId = null;
+    let captainPoints = 0;
+    for (const p of startingXI) {
+      const v = ptOf(p, gw);
+      if (v > captainPoints) { captainPoints = v; captainId = p.id; }
+    }
+    return { gw, points: round(base + captainPoints), base: round(base), captainId, captainPoints: round(captainPoints) };
+  });
+}
+
+// What the squad actually scores over the horizon, and the single objective the optimiser, the
+// rating and the headline all share, so they can never disagree: the per-GW series (which
+// already doubles the best starter each week) summed. Premiums are valued for their captaincy,
+// not just raw points-per-£m across 15.
 export function effectiveProjection(picked, startingXI, { benchBoost = false } = {}) {
-  const base = (benchBoost ? picked : startingXI).reduce((s, p) => s + proj(p), 0);
-  const captainBonus = startingXI.length ? Math.max(...startingXI.map((p) => proj(p))) : 0;
-  return round(base + captainBonus);
+  const scorers = benchBoost ? picked : startingXI;
+  return round(squadSeries(startingXI, scorers).reduce((s, g) => s + g.points, 0));
 }
 function available(p) {
   if (typeof p.chanceNext === 'number') return p.chanceNext > 0;
@@ -163,11 +180,14 @@ export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.rand
   const startingXI = pickStartingXI(picked);
   const startIds = new Set(startingXI.map((p) => p.id));
   const bench = picked.filter((p) => !startIds.has(p.id)).sort((a, b) => a.elementType - b.elementType || proj(b) - proj(a));
-  const captain = [...startingXI].sort((a, b) => b.projNext - a.projNext)[0] || null;
-  const vice = [...startingXI].sort((a, b) => b.projNext - a.projNext)[1] || null;
+  // The captain is the highest-projecting starter over the horizon (their points are doubled).
+  const captain = [...startingXI].sort((a, b) => proj(b) - proj(a))[0] || null;
+  const vice = [...startingXI].sort((a, b) => proj(b) - proj(a))[1] || null;
 
   const squadProjection = round(picked.reduce((s, p) => s + proj(p), 0));
-  const effective = effectiveProjection(picked, startingXI, { benchBoost });
+  // Per-GW points with the captain doubled each week (the best starter that GW).
+  const series = squadSeries(startingXI, benchBoost ? picked : startingXI);
+  const effective = round(series.reduce((s, g) => s + g.points, 0));
   const avgFixtureDifficulty = squadAvgDifficulty(picked);
 
   return {
@@ -181,8 +201,9 @@ export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.rand
     // The objective the rating and headline share (XI + captain, or squad + captain under BB).
     effectiveProjection: effective,
     avgFixtureDifficulty,
-    // Per-gameweek projected points for the starting XI (the points graph).
-    pointsByGw: sumPointsByGw(startingXI),
+    // Per-gameweek points with the captain doubled each week — carries { gw, points, base,
+    // captainId, captainPoints } so the stepper can move the © and double that GW's best.
+    pointsByGw: series,
     value: spend > 0 ? round(squadProjection / spend) : 0,
     formation: formationOf(startingXI),
     squad: groupByPosition(picked),
