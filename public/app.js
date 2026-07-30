@@ -336,10 +336,15 @@ async function load() {
       body: JSON.stringify(advice),
     });
     const data = await res.json();
-    if (data.disabled || (!data.text && !data.error)) {
+    if (data.disabled) {
+      // No provider wired up — show a short hint instead of hiding silently, so it's clear
+      // this is a setup step (add the Workers AI `AI` binding), not an app error.
+      $('#ai-card').classList.remove('hidden');
+      $('#ai-body').innerHTML = `<span class="muted">AI coach is off — add a Workers AI binding named <code>AI</code> (or an ANTHROPIC_API_KEY) in Cloudflare, then redeploy. Check <a href="/api/health" target="_blank">/api/health</a> to confirm the binding.</span>`;
+    } else if (!data.text && !data.error) {
       $('#ai-card').classList.add('hidden');
     } else if (data.error) {
-      $('#ai-body').innerHTML = `<span class="muted">AI coach unavailable right now.</span>`;
+      $('#ai-body').innerHTML = `<div class="error-box">AI coach error: ${esc(data.detail || data.error)}</div>`;
     } else {
       $('#ai-body').innerHTML = renderMarkdown(data.text);
     }

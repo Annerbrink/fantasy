@@ -52,27 +52,45 @@ export async function onRequestPost({ request, env }) {
 }
 
 // --- Cloudflare Workers AI (free tier) ------------------------------------------------
+// Try the configured model first, then a couple of widely-available fallbacks — model
+// availability varies by account/region, and an unavailable model is a common cause of a
+// silent failure. The last error is surfaced so /api/coach returns a useful message.
 async function coachWithWorkersAI(env, system, user) {
-  const model = env.WORKERS_AI_MODEL || '@cf/meta/llama-3.1-8b-instruct';
-  const result = await env.AI.run(model, {
-    messages: [
-      { role: 'system', content: system },
-      { role: 'user', content: user },
-    ],
-    max_tokens: 900,
-  });
-  const text = (result?.response || '').trim();
-  const u = result?.usage || {};
-  return {
-    text,
-    model,
-    provider: 'workers-ai',
-    usage: {
-      inputTokens: u.prompt_tokens ?? null,
-      outputTokens: u.completion_tokens ?? null,
-      totalTokens: u.total_tokens ?? null,
-    },
-  };
+  const models = [
+    env.WORKERS_AI_MODEL,
+    '@cf/meta/llama-3.1-8b-instruct',
+    '@cf/meta/llama-3-8b-instruct',
+    '@cf/mistral/mistral-7b-instruct-v0.1',
+  ].filter(Boolean);
+
+  let lastErr = null;
+  for (const model of models) {
+    try {
+      const result = await env.AI.run(model, {
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        max_tokens: 900,
+      });
+      const text = (result?.response || '').trim();
+      if (!text) throw new Error('empty response');
+      const u = result?.usage || {};
+      return {
+        text,
+        model,
+        provider: 'workers-ai',
+        usage: {
+          inputTokens: u.prompt_tokens ?? null,
+          outputTokens: u.completion_tokens ?? null,
+          totalTokens: u.total_tokens ?? null,
+        },
+      };
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw new Error(`Workers AI failed (${models.join(', ')}): ${String(lastErr?.message || lastErr)}`);
 }
 
 // --- Anthropic Claude (if a key is configured) ----------------------------------------
