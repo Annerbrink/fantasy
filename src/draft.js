@@ -21,6 +21,16 @@ const MAX_PER_TEAM = 3;
 function proj(p) {
   return p.projHorizon ?? p.projNext3 ?? 0;
 }
+
+// What the squad actually scores, and the single objective the optimiser, the rating and the
+// headline all share, so they can never disagree. Only the starting XI scores in a normal week
+// (all 15 under Bench Boost), and the captain doubles the best starter every week — so premiums
+// are valued for their captaincy, not just raw points-per-£m across 15.
+export function effectiveProjection(picked, startingXI, { benchBoost = false } = {}) {
+  const base = (benchBoost ? picked : startingXI).reduce((s, p) => s + proj(p), 0);
+  const captainBonus = startingXI.length ? Math.max(...startingXI.map((p) => proj(p))) : 0;
+  return round(base + captainBonus);
+}
 function available(p) {
   if (typeof p.chanceNext === 'number') return p.chanceNext > 0;
   return !['i', 's', 'u', 'n'].includes(p.status);
@@ -43,10 +53,24 @@ export function mulberry32(seed) {
 // as "optimal" and the benchmark the team rating is scored against.
 export function buildBestDraft(scored, { budget = 100.0, attempts = 16, jitter = 0.35, lockedIds = [], benchBoost = false } = {}) {
   let best = buildDraft(scored, { budget, lockedIds, benchBoost });
+  const consider = (candidate) => {
+    if (candidate.complete && candidate.effectiveProjection > best.effectiveProjection) best = candidate;
+  };
+  // Jittered restarts escape the greedy's local optimum.
   for (let i = 1; i <= attempts; i += 1) {
     const seed = (Math.imul(i, 2654435761) ^ 0x9e3779b9) >>> 0;
-    const candidate = buildDraft(scored, { budget, jitter, rng: mulberry32(seed), lockedIds, benchBoost });
-    if (candidate.complete && candidate.squadProjection > best.squadProjection) best = candidate;
+    consider(buildDraft(scored, { budget, jitter, rng: mulberry32(seed), lockedIds, benchBoost }));
+  }
+  // Premium-anchored restarts: a pure greedy skips a £15m striker on value grounds, so seed a
+  // build around each of the top projectors (that aren't already forced) — the effective
+  // objective (XI + captain) then keeps whichever genuinely scores most. Deterministic.
+  const forced = new Set(lockedIds);
+  const premiums = [...scored]
+    .filter((p) => available(p) && p.price > 0 && !forced.has(p.id))
+    .sort((a, b) => proj(b) - proj(a))
+    .slice(0, 6);
+  for (const p of premiums) {
+    consider(buildDraft(scored, { budget, lockedIds: [...lockedIds, p.id], benchBoost }));
   }
   return best;
 }
@@ -143,15 +167,19 @@ export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.rand
   const vice = [...startingXI].sort((a, b) => b.projNext - a.projNext)[1] || null;
 
   const squadProjection = round(picked.reduce((s, p) => s + proj(p), 0));
+  const effective = effectiveProjection(picked, startingXI, { benchBoost });
   const avgFixtureDifficulty = squadAvgDifficulty(picked);
 
   return {
     budget,
+    benchBoost,
     totalCost: spend,
     remaining: round(budget - spend),
     complete: picked.length === 15,
     projectedPoints: round(startingXI.reduce((s, p) => s + proj(p), 0)),
     squadProjection,
+    // The objective the rating and headline share (XI + captain, or squad + captain under BB).
+    effectiveProjection: effective,
     avgFixtureDifficulty,
     // Per-gameweek projected points for the starting XI (the points graph).
     pointsByGw: sumPointsByGw(startingXI),

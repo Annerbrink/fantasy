@@ -487,14 +487,15 @@ function renderDraft(d) {
       <h2>${title}</h2>
       <div class="rating-banner">
         <div class="rating-score"><span class="pill ${ratingColor}">${d.rating}/100</span> <strong>${esc(d.grade)}</strong></div>
-        <div class="muted">${d.isAlternative ? 'vs the optimal squad’s projection' : 'benchmark squad (100)'} · avg FDR ${d.ratingBreakdown.avgFixtureDifficulty ?? '—'} · value ${d.ratingBreakdown.value} pts/£m</div>
+        <div class="muted">${d.isAlternative ? 'vs the optimal squad’s projection' : 'benchmark squad (100)'} · rated on ${esc(d.objectiveLabel || 'XI + captain')} · avg FDR ${d.ratingBreakdown.avgFixtureDifficulty ?? '—'} · value ${d.ratingBreakdown.value} pts/£m</div>
       </div>
+      ${d.benchBoost ? `<p class="hint">🪑 <strong>Bench Boost mode:</strong> all 15 players score, so the squad is optimised as a whole (not just the XI). The headline counts all 15 + captain.</p>` : ''}
       ${lockNote(d)}
       <div class="grid" style="margin-bottom:14px">
         ${statTile('Total cost', money(d.totalCost))}
         ${statTile('In the bank', money(d.remaining))}
         ${statTile('Formation', d.formation)}
-        ${statTile('XI projected', d.projectedPoints + ' pts')}
+        ${statTile(esc(d.objectiveLabel || 'XI + captain'), (d.effectiveProjection ?? d.projectedPoints) + ' pts')}
         ${d.captain ? statTile('Captain', esc(d.captain.name)) : ''}
       </div>
       ${stepper}

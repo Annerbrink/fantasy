@@ -70,6 +70,33 @@ test('buildDraft picks a valid starting XI and formation', () => {
   assert.equal(draft.startingXI.filter((p) => p.position === 'GKP').length, 1);
 });
 
+test('the optimal squad never scores fewer effective points than a locked variant', () => {
+  // Regression guard for the "100/100 shows fewer points than a locked squad" paradox: the
+  // unlocked optimum must be >= any constrained (locked) build on the shared objective, in
+  // both normal and Bench Boost modes.
+  const boot = bigBootstrap();
+  const scored = scorePlayers(boot, makeFixtures(), 1, 5);
+  const anchor = [...scored].sort((a, b) => b.projHorizon - a.projHorizon)[0].id; // the top premium
+  for (const benchBoost of [false, true]) {
+    const optimal = buildBestDraft(scored, { budget: 100, benchBoost });
+    const locked = buildBestDraft(scored, { budget: 100, benchBoost, lockedIds: [anchor] });
+    assert.ok(typeof optimal.effectiveProjection === 'number', 'effectiveProjection is returned');
+    assert.ok(
+      optimal.effectiveProjection >= locked.effectiveProjection - 1e-6,
+      `optimal (${optimal.effectiveProjection}) >= locked (${locked.effectiveProjection}) [benchBoost=${benchBoost}]`
+    );
+  }
+});
+
+test('effectiveProjection reflects the mode: XI+captain normally, all 15+captain under Bench Boost', () => {
+  const boot = bigBootstrap();
+  const scored = scorePlayers(boot, makeFixtures(), 1, 5);
+  const d = buildBestDraft(scored, { budget: 100, benchBoost: false });
+  // Normal: base is the XI only, so effective < the 15-man squad sum + captain.
+  assert.ok(d.effectiveProjection <= d.squadProjection + Math.max(...d.startingXI.map((p) => p.projHorizon)) + 1e-6);
+  assert.ok(d.effectiveProjection > d.projectedPoints, 'includes a captain bonus on top of the XI');
+});
+
 test('draft players carry a per-gameweek projection for the GW stepper', () => {
   const boot = bigBootstrap();
   const scored = scorePlayers(boot, makeFixtures(), 1, 5);

@@ -42,8 +42,10 @@ export async function onRequestGet({ request }) {
   const scored = scorePlayers(bootstrap, fixtures, targetGw, horizon);
 
   // The multi-start best squad (no locks) under the same objective is the rating benchmark.
+  // "Effective" points = what actually scores: the starting XI + captain (all 15 + captain
+  // under Bench Boost). Rating and headline both use this, so they can never disagree.
   const optimal = buildBestDraft(scored, { budget, benchBoost });
-  const optProj = optimal.squadProjection || 1;
+  const optProj = optimal.effectiveProjection || 1;
 
   let draft = optimal;
   let usedSeed = 0;
@@ -56,7 +58,8 @@ export async function onRequestGet({ request }) {
     draft = buildBestDraft(scored, { budget, lockedIds, benchBoost });
   }
 
-  const rating = Math.max(0, Math.min(100, Math.round((draft.squadProjection / optProj) * 100)));
+  const rating = Math.max(0, Math.min(100, Math.round((draft.effectiveProjection / optProj) * 100)));
+  const objectiveLabel = benchBoost ? 'Squad + captain · Bench Boost' : 'XI + captain';
 
   return new Response(
     JSON.stringify({
@@ -67,7 +70,9 @@ export async function onRequestGet({ request }) {
       seed: usedSeed,
       rating,
       grade: gradeFor(rating),
+      objectiveLabel,
       ratingBreakdown: {
+        effectiveProjection: draft.effectiveProjection,
         squadProjection: draft.squadProjection,
         avgFixtureDifficulty: draft.avgFixtureDifficulty,
         value: draft.value,
