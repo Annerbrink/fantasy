@@ -10,7 +10,24 @@ const store = {
     if (team) localStorage.setItem('fpl_team', team); else localStorage.removeItem('fpl_team');
     if (league) localStorage.setItem('fpl_league', league); else localStorage.removeItem('fpl_league');
   },
+  // Planned chip schedule: { slot: gw }, e.g. { wildcard1: 8, '3xc1': 3 }.
+  get chipPlan() { try { return JSON.parse(localStorage.getItem('fpl_chip_plan') || '{}') || {}; } catch { return {}; } },
+  setChip(slot, gw) {
+    const map = store.chipPlan;
+    if (Number.isFinite(gw)) map[slot] = gw; else delete map[slot];
+    localStorage.setItem('fpl_chip_plan', JSON.stringify(map));
+  },
+  setChipPlan(map) { localStorage.setItem('fpl_chip_plan', JSON.stringify(map || {})); },
+  clearChipPlan() { localStorage.removeItem('fpl_chip_plan'); },
 };
+
+// Serialize the saved chip plan for the API (`wildcard1:8,3xc1:3`).
+function chipParam() {
+  return Object.entries(store.chipPlan)
+    .filter(([, gw]) => Number.isFinite(gw))
+    .map(([slot, gw]) => `${slot}:${gw}`)
+    .join(',');
+}
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -219,6 +236,95 @@ function fixtureOutlookCard(a) {
     </div>`;
 }
 
+// The eight chip slots (base chip × half), mirroring src/chip-plan.js.
+const CHIP_SLOTS = [
+  { slot: 'wildcard', name: 'Wildcard' },
+  { slot: 'bboost', name: 'Bench Boost' },
+  { slot: '3xc', name: 'Triple Captain' },
+  { slot: 'freehit', name: 'Free Hit' },
+].flatMap((c) => [
+  { slot: `${c.slot}1`, name: c.name, half: 1, min: 1, max: 19 },
+  { slot: `${c.slot}2`, name: c.name, half: 2, min: 20, max: 38 },
+]);
+
+// Editable chip-strategy planner: suggested week + your pick + a validation verdict per chip.
+function chipPlannerCard(a) {
+  const targetGw = a.targetGw || 1;
+  const suggested = a.suggestedChipPlan || {};
+  const saved = store.chipPlan;
+  const reviewBySlot = new Map((a.chipPlanReview || []).map((r) => [r.slot, r]));
+
+  const row = (s) => {
+    const start = Math.max(s.min, targetGw);
+    const savedGw = Number.isFinite(saved[s.slot]) ? saved[s.slot] : null;
+    let opts = `<option value="">— not planned —</option>`;
+    for (let gw = start; gw <= s.max; gw += 1) {
+      opts += `<option value="${gw}"${savedGw === gw ? ' selected' : ''}>GW${gw}</option>`;
+    }
+    const sug = suggested[s.slot];
+    const rev = reviewBySlot.get(s.slot);
+    let verdict = '';
+    if (savedGw != null && rev) {
+      verdict = `<span class="chip-badge ${rev.ok ? 'ok' : 'warn'}">${rev.ok ? '✓' : '⚠'}</span> <small class="${rev.ok ? 'muted' : 'urgent-text'}">${esc(rev.note)}</small>`;
+    } else if (sug) {
+      verdict = `<small class="muted">Suggested GW${sug.gw} — ${esc(sug.reason)}</small>`;
+    } else {
+      verdict = `<small class="muted">No standout week yet.</small>`;
+    }
+    const disabled = start > s.max ? ' disabled' : '';
+    return `<tr>
+      <td class="chip-cell-name">${esc(s.name)}</td>
+      <td><select class="chip-select" data-slot="${s.slot}"${disabled}>${opts}</select></td>
+      <td class="chip-cell-verdict">${verdict}</td>
+    </tr>`;
+  };
+
+  const half = (n, label) => `<h3 class="chip-half">${label}</h3>
+    <div class="table-scroll"><table class="chip-plan-table">
+      <thead><tr><th>Chip</th><th>Your week</th><th>Verdict</th></tr></thead>
+      <tbody>${CHIP_SLOTS.filter((s) => s.half === n).map(row).join('')}</tbody>
+    </table></div>`;
+
+  const planned = Object.keys(saved).length;
+  const influence = planned
+    ? `<p class="chip-influence-line">♟️ Your plan is shaping transfer suggestions and drafts below.</p>`
+    : `<p class="hint">Set your intended chip weeks and the model plans transfers &amp; drafts around them — no −4 hits before a Wildcard, a strong bench for a Bench Boost week.</p>`;
+
+  return `<div class="card" id="chip-plan-card">
+    <div class="chip-plan-head">
+      <h2>♟️ Chip strategy</h2>
+      <div class="chip-plan-actions">
+        <button class="ghost" id="chip-suggest">✨ Use suggested plan</button>
+        <button class="ghost" id="chip-clear" title="Remove your planned weeks">Clear</button>
+      </div>
+    </div>
+    ${influence}
+    ${half(1, 'First half · GW1–19')}
+    ${half(2, 'Second half · GW20–38')}
+  </div>`;
+}
+
+// Attach the planner's inputs after it's in the DOM. Editing the plan re-runs load() so the
+// server recomputes advice, transfers and (via the saved plan) the draft with the new chips.
+function wireChipPlanner(a) {
+  document.querySelectorAll('.chip-select').forEach((sel) => {
+    sel.addEventListener('change', () => {
+      const gw = parseInt(sel.value, 10);
+      store.setChip(sel.dataset.slot, Number.isFinite(gw) ? gw : null);
+      load();
+    });
+  });
+  $('#chip-suggest')?.addEventListener('click', () => {
+    const map = {};
+    for (const [slot, v] of Object.entries(a.suggestedChipPlan || {})) {
+      if (v && Number.isFinite(v.gw)) map[slot] = v.gw;
+    }
+    store.setChipPlan(map);
+    load();
+  });
+  $('#chip-clear')?.addEventListener('click', () => { store.clearChipPlan(); load(); });
+}
+
 function renderCaptain(a) {
   const c = a.captain;
   const capHtml = c ? `
@@ -232,9 +338,15 @@ function renderCaptain(a) {
       ${a.tripleCaptain ? `<p class="hint" style="margin-top:12px">🔺 <strong>Triple Captain target:</strong> ${esc(a.tripleCaptain.name)} in <strong>GW${a.tripleCaptain.gw}</strong> ${a.tripleCaptain.home ? 'at home to' : 'away at'} ${esc(a.tripleCaptain.opponent)}${a.tripleCaptain.promoted ? ' (newly-promoted/weak side)' : ''} — proj ${a.tripleCaptain.points ?? '—'} pts.</p>` : ''}
     </div>` : '';
 
+  const chipBadge = (ch) => {
+    if (ch.status === 'used') return '';
+    if (ch.planned) return ch.ok === false ? ' <span class="pill neg">check week</span>' : ' <span class="pill pos">planned</span>';
+    if (ch.status === 'urgent') return ' <span class="pill neg">use soon</span>';
+    return '';
+  };
   const chips = (a.chips || []).map((ch) => `
     <div class="chip-row">
-      <div class="chip-name">${esc(ch.chip)}${ch.when ? ` <span class="chip-when">${esc(ch.when)}</span>` : ''}${ch.status === 'urgent' ? ' <span class="pill neg">use soon</span>' : ''}</div>
+      <div class="chip-name">${esc(ch.chip)}${ch.when ? ` <span class="chip-when">${esc(ch.when)}</span>` : ''}${chipBadge(ch)}</div>
       <div class="${ch.status === 'used' ? 'muted' : ch.status === 'urgent' ? 'urgent-text' : ''}">${esc(ch.recommendation)}</div>
     </div>`).join('');
 
@@ -249,11 +361,14 @@ function renderCaptain(a) {
   </tr>`).join('');
 
   $('#captain-content').innerHTML = `${capHtml}
-    <div class="card"><h2>Chip strategy</h2><p class="hint">When to fire each chip, based on upcoming fixture swings and good-vs-bad matchups.</p>${chips}</div>
+    ${chipPlannerCard(a)}
+    <div class="card"><h2>This half's chip calls</h2><p class="hint">The model's read for the current window — your planned weeks are marked, the rest are auto-suggested from upcoming fixture swings.</p>${chips}</div>
     ${attack ? `<div class="card"><h2>Best attacking gameweeks</h2><p class="hint">Weeks where the most strong teams face weak ones — prime for Triple Captain or Bench Boost.</p><div class="table-scroll"><table>
       <thead><tr><th>GW</th><th class="num">Index</th><th>Standout fixtures</th></tr></thead><tbody>${attack}</tbody></table></div></div>` : ''}
     ${dgw ? `<div class="card"><h2>Double &amp; blank gameweeks ahead</h2><div class="table-scroll"><table>
       <thead><tr><th>GW</th><th>Doubles</th><th>Blanks</th></tr></thead><tbody>${dgw}</tbody></table></div></div>` : ''}`;
+
+  wireChipPlanner(a);
 }
 
 function renderRivals(a) {
@@ -480,7 +595,19 @@ async function buildDraft(randomize = false) {
   $('#draft-content').innerHTML = `<div class="card"><p class="empty"><span class="spinner"></span> ${label}</p></div>`;
   const rnd = randomize ? `&randomize=1&seed=${Math.floor(Math.random() * 1e9)}` : '';
   const lock = lockedPlayers.length ? `&lock=${lockedPlayers.map((p) => p.id).join(',')}` : '';
-  const bb = $('#draft-bb')?.checked ? '&bb=1' : '';
+  // Auto-enable Bench Boost mode when you've planned a Bench Boost within this horizon —
+  // the draft should then value a strong bench, not a cheap 4.0 backup keeper.
+  const tgw = latestAdvice?.targetGw || 1;
+  const bbGw = store.chipPlan[`bboost${tgw <= 19 ? 1 : 2}`];
+  const autoBB = Number.isFinite(bbGw) && bbGw >= tgw && bbGw < tgw + parseInt(horizon, 10);
+  const bbToggle = $('#draft-bb');
+  if (autoBB && bbToggle && !bbToggle.checked) {
+    bbToggle.checked = true;
+    const lbl = bbToggle.closest('.switch')?.querySelector('.switch-label');
+    if (lbl) lbl.textContent = 'On';
+    toast(`Bench Boost planned GW${bbGw} — building a bench-strong squad`);
+  }
+  const bb = (bbToggle?.checked || autoBB) ? '&bb=1' : '';
   try {
     const res = await fetch(`/api/draft?budget=${encodeURIComponent(budget)}&horizon=${encodeURIComponent(horizon)}${rnd}${lock}${bb}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -567,7 +694,8 @@ async function loadPlan() {
   if (!el) return;
   if (!store.teamId) { el.innerHTML = ''; return; }
   try {
-    const p = await (await fetch(`/api/plan?teamId=${encodeURIComponent(store.teamId)}&horizon=5`)).json();
+    const chips = chipParam();
+    const p = await (await fetch(`/api/plan?teamId=${encodeURIComponent(store.teamId)}&horizon=5${chips ? `&chips=${encodeURIComponent(chips)}` : ''}`)).json();
     if (!p.hasSquad) { el.innerHTML = ''; return; }
     if (!p.roadmap?.length) {
       el.innerHTML = `<div class="card"><h2>Transfer plan <span class="gw">· next ${p.horizon} GWs</span></h2><p class="muted">No upgrades beat your current squad over the next ${p.horizon} gameweeks — hold your transfers.</p></div>`;
@@ -581,9 +709,13 @@ async function loadPlan() {
     const hit = (p.hitWorthy || []).length
       ? `<p class="hint" style="margin-top:10px">💥 Worth a −4 hit now: ${p.hitWorthy.map((h) => `${esc(h.out.name)}→${esc(h.in.name)} (+${h.nowGain})`).join(', ')}</p>`
       : '';
+    const chipNotes = (p.chipNotes || []).length
+      ? `<div class="chip-influence">${p.chipNotes.map((n) => `<div>♟️ ${esc(n)}</div>`).join('')}</div>`
+      : '';
     el.innerHTML = `<div class="card">
       <h2>📅 Transfer plan <span class="gw">· ${p.freeTransfers} FT · ${money(p.bank)} bank · next ${p.horizon} GWs</span></h2>
       <p class="hint">One free transfer per week (no hits), best moves first so you bank the gains for longer.</p>
+      ${chipNotes}
       <div class="table-scroll"><table>
         <thead><tr><th>When</th><th>Move</th><th class="num">Gain</th></tr></thead>
         <tbody>${rows}</tbody>
@@ -646,6 +778,8 @@ async function load() {
   const params = new URLSearchParams();
   if (store.teamId) params.set('teamId', store.teamId);
   if (store.leagueId) params.set('leagueId', store.leagueId);
+  const chips = chipParam();
+  if (chips) params.set('chips', chips);
 
   $('#dash-content').innerHTML = `<div class="card"><p class="empty"><span class="spinner"></span> Loading your gameweek…</p></div>`;
 

@@ -117,6 +117,30 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .chip-when { color: var(--pl-magenta); font-weight: 600; font-size: .85rem; }
 .urgent-text { color: var(--pl-magenta); font-weight: 500; }
 
+/* Chip-strategy planner */
+.chip-plan-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.chip-plan-head h2 { margin: 0; }
+.chip-plan-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip-influence-line { color: var(--pl-magenta); font-weight: 600; font-size: .85rem; margin: 0 0 12px; }
+.chip-half { font-size: .8rem; text-transform: uppercase; letter-spacing: .4px; color: var(--text-dim); margin: 14px 0 4px; }
+.chip-plan-table td { vertical-align: middle; }
+.chip-cell-name { font-weight: 700; white-space: nowrap; }
+.chip-cell-verdict { font-size: .82rem; line-height: 1.35; }
+.chip-select {
+  padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: .9rem; min-width: 130px;
+}
+.chip-select:focus { outline: 2px solid var(--pl-magenta); outline-offset: 0; border-color: transparent; }
+.chip-select:disabled { opacity: .5; }
+.chip-badge { font-weight: 700; }
+.chip-badge.ok { color: #00854a; }
+.chip-badge.warn { color: #b8860b; }
+.chip-influence { display: flex; flex-direction: column; gap: 4px; margin: 0 0 12px; padding: 10px 12px; background: var(--surface-2); border-radius: 8px; font-size: .84rem; }
+@media (prefers-color-scheme: dark) {
+  .chip-badge.ok { color: var(--pl-green); }
+  .chip-badge.warn { color: #ffd24d; }
+}
+
 .captain-pick { display: flex; gap: 14px; flex-wrap: wrap; }
 .captain-box { flex: 1; min-width: 140px; background: var(--surface-2); border-radius: 10px; padding: 14px; text-align: center; }
 .captain-box .role { color: var(--text-dim); font-size: .75rem; text-transform: uppercase; letter-spacing: .4px; }

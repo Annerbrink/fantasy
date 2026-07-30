@@ -7,6 +7,7 @@ import { fpl } from '../../src/fpl-client.js';
 import { resolveTargetGw } from '../../src/fdr.js';
 import { scorePlayers } from '../../src/scoring.js';
 import { planTransfers } from '../../src/planner.js';
+import { parseChipPlan } from '../../src/chip-plan.js';
 
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), {
@@ -38,6 +39,7 @@ export async function onRequestGet({ request }) {
     players: picks.picks.map((p) => ({ id: p.element, sellingPrice: (p.selling_price ?? 0) / 10 || undefined })),
   };
 
-  const plan = planTransfers(scored, squad, { horizon, weeks: Math.min(horizon, 5) });
+  const chipPlan = parseChipPlan(url.searchParams.get('chips') || '');
+  const plan = planTransfers(scored, squad, { horizon, weeks: Math.min(horizon, 5), chipPlan, targetGw });
   return json({ targetGw, ...plan });
 }

@@ -43,3 +43,20 @@ test('second-half chips use the GW38 deadline', () => {
   assert.equal(bb.status, 'hold');
   assert.match(bb.recommendation, /GW38/);
 });
+
+test('a user-planned chip anchors advice to their week with the review verdict', () => {
+  const advice = chipAdvice({
+    dgwBgw: [dbl(26)],
+    attackGws: [],
+    targetGw: 5,
+    chipPlan: { bboost1: 8 },
+    chipReview: [{ slot: 'bboost1', key: 'bboost', ok: false, note: 'GW8 has no Double; the nearest is GW26.' }],
+  });
+  const bb = advice.find((c) => c.chip === 'Bench Boost');
+  assert.equal(bb.status, 'planned');
+  assert.equal(bb.when, 'GW8');
+  assert.equal(bb.ok, false);
+  assert.match(bb.recommendation, /GW26/);
+  // A chip with no plan still auto-recommends as before (not anchored to a planned week).
+  assert.notEqual(advice.find((c) => c.chip === 'Triple Captain').status, 'planned');
+});

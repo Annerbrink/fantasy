@@ -10,11 +10,15 @@ import { pickCaptain } from './captain.js';
 import { chipAdvice } from './chips.js';
 import { analyseRivals, picksToPlayerIds } from './rivals.js';
 import { priceTrends } from './prices.js';
+import { suggestChipPlan, validateChipPlan, normalizeChipPlan } from './chip-plan.js';
 
 // `data` bundles the raw FPL responses. `entry`, `entryHistory`, `picks`, `standings` and
 // `rivalPicks` are optional — the engine degrades gracefully (pre-season, or no team set).
+// `chipPlan` (optional) is the manager's intended chip schedule (slot→gw), which shapes the
+// chip advice below and the transfer planner in planner.js.
 export function buildAdvice(data) {
   const { bootstrap, fixtures, entry, entryHistory, picks, standings, rivalPicks } = data;
+  const userChipPlan = normalizeChipPlan(data.chipPlan);
 
   const targetGw = resolveTargetGw(bootstrap.events);
   const teamById = indexTeams(bootstrap.teams);
@@ -80,6 +84,12 @@ export function buildAdvice(data) {
   const attackGws = gameweekAttackIndex(fixtures, bootstrap.teams, targetGw, 10);
   const fixtureOutlook = teamFixtureOutlook(fixtures, bootstrap.teams, targetGw, 5);
 
+  // Season-wide fixture scans for chip planning (the near-term scans above drive the current
+  // window; a chip plan reaches across the whole remaining season).
+  const seasonHorizon = Math.max(1, 39 - targetGw);
+  const dgwBgwSeason = detectDgwBgw(fixtures, bootstrap.teams, targetGw, seasonHorizon);
+  const attackSeason = gameweekAttackIndex(fixtures, bootstrap.teams, targetGw, seasonHorizon);
+
   // Weakest teams by overall strength — a proxy for newly-promoted / soft opponents to
   // target with the captaincy and Triple Captain.
   const teamStrength = (t) => (t.strength_overall_home || 0) + (t.strength_overall_away || 0);
@@ -121,7 +131,15 @@ export function buildAdvice(data) {
     }
   }
 
-  const chips = chipAdvice({ chipsUsed, dgwBgw, attackGws, tripleCaptain, teamById, targetGw });
+  // --- Chip plan ----------------------------------------------------------------------
+  // Always suggest an optimal schedule (the UI offers it as a starting point). Validate the
+  // effective plan — the manager's if they've set one, otherwise the suggestion — so the UI
+  // can show a verdict per chip. Only the manager's explicit plan shapes advice/transfers.
+  const suggestedChipPlan = suggestChipPlan({ dgwBgw: dgwBgwSeason, attackGws: attackSeason, tripleCaptain, targetGw });
+  const hasUserPlan = Object.keys(userChipPlan).length > 0;
+  const chipPlanReview = validateChipPlan(hasUserPlan ? userChipPlan : suggestedChipPlan, { dgwBgw: dgwBgwSeason, attackGws: attackSeason, tripleCaptain, targetGw });
+
+  const chips = chipAdvice({ chipsUsed, dgwBgw, attackGws, tripleCaptain, teamById, targetGw, chipPlan: userChipPlan, chipReview: chipPlanReview });
 
   // --- Rivals -------------------------------------------------------------------------
   let rivals = null;
@@ -156,6 +174,9 @@ export function buildAdvice(data) {
     attackGws,
     fixtureOutlook,
     tripleCaptain,
+    chipPlan: userChipPlan,
+    suggestedChipPlan,
+    chipPlanReview,
     // Closed list of current players so the AI coach never invents departed ones.
     keyPlayers: watchlist(scored),
     priceWatch: { risers: trends.risers, fallers: trends.fallers },

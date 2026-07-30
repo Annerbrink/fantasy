@@ -8,6 +8,7 @@
 import { fpl, leagueStandingsAll } from '../../src/fpl-client.js';
 import { buildAdvice } from '../../src/engine.js';
 import { resolveTargetGw } from '../../src/fdr.js';
+import { parseChipPlan } from '../../src/chip-plan.js';
 
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), {
@@ -34,7 +35,7 @@ export async function onRequestGet({ request }) {
   const [bootstrap, fixtures] = await Promise.all([fpl.bootstrap(), fpl.fixtures()]);
   const targetGw = resolveTargetGw(bootstrap.events);
 
-  const data = { bootstrap, fixtures };
+  const data = { bootstrap, fixtures, chipPlan: parseChipPlan(url.searchParams.get('chips') || '') };
 
   // Manager squad — optional.
   if (teamId && /^\d+$/.test(teamId)) {

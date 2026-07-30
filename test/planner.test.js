@@ -39,3 +39,28 @@ test('planTransfers flags a move worth a -4 hit now', () => {
   const plan = planTransfers(scored, squad, { horizon: 3, weeks: 2 });
   assert.ok(plan.hitWorthy.some((h) => h.in.id === 2));
 });
+
+test('a planned Wildcard in the window suppresses -4 hit suggestions', () => {
+  const scored = [
+    p(1, 3, 6.0, [1, 1, 1]),
+    p(2, 3, 6.0, [6, 6, 6]), // would normally be hit-worthy
+  ];
+  const squad = { bank: 0.5, freeTransfers: 1, players: [{ id: 1, sellingPrice: 6.0 }] };
+  const plan = planTransfers(scored, squad, { horizon: 3, weeks: 2, targetGw: 1, chipPlan: { wildcard1: 2 } });
+  assert.equal(plan.hitWorthy.length, 0, 'no hits before a free Wildcard reset');
+  assert.ok(plan.chipNotes.some((n) => /Wildcard/.test(n)));
+});
+
+test('a planned Free Hit week is excluded from transfer gains', () => {
+  // The upgrade only outscores the owned player in GW2; Free Hit that week borrows a squad,
+  // so the swap nets nothing and should not make the roadmap.
+  const scored = [
+    p(1, 3, 6.0, [3, 3, 3]), // owned
+    p(2, 3, 6.5, [3, 9, 3]), // only better in GW2
+  ];
+  const squad = { bank: 1.0, freeTransfers: 1, players: [{ id: 1, sellingPrice: 6.0 }] };
+  const withFH = planTransfers(scored, squad, { horizon: 3, weeks: 2, targetGw: 1, chipPlan: { freehit1: 2 } });
+  assert.equal(withFH.roadmap.length, 0, 'no gain once the Free Hit GW is zeroed');
+  const without = planTransfers(scored, squad, { horizon: 3, weeks: 2, targetGw: 1 });
+  assert.ok(without.roadmap.some((r) => r.in.id === 2), 'without the Free Hit, the swap is worthwhile');
+});

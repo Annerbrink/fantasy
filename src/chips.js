@@ -24,9 +24,14 @@ function halfDeadline(targetGw) {
 
 // `chipsUsed` is the set of chip keys already played this half-season (from entry history).
 // `dgwBgw` is the report from detectDgwBgw(). `teamById` maps team id -> short name.
-export function chipAdvice({ chipsUsed = new Set(), dgwBgw = [], attackGws = [], tripleCaptain = null, teamById = new Map(), targetGw }) {
+// `chipPlan` (slot→gw) is the manager's intended schedule; when a chip is planned for this
+// half we anchor the advice to their chosen week (with a verdict from `chipReview`) instead of
+// auto-recommending one.
+export function chipAdvice({ chipsUsed = new Set(), dgwBgw = [], attackGws = [], tripleCaptain = null, teamById = new Map(), targetGw, chipPlan = {}, chipReview = [] }) {
   const expiryGw = halfDeadline(targetGw);
   const remaining = expiryGw - targetGw; // gameweeks left to use this half's chips
+  const half = targetGw <= HALF1_DEADLINE ? 1 : 2;
+  const reviewBySlot = new Map(chipReview.map((r) => [r.slot, r]));
 
   // A chip can only be used before its half's deadline, so bound every target to it.
   const doubles = dgwBgw.filter((r) => r.doubleTeams.length > 0 && r.gw <= expiryGw);
@@ -40,9 +45,25 @@ export function chipAdvice({ chipsUsed = new Set(), dgwBgw = [], attackGws = [],
       advice.push({ chip: chip.name, status: 'used', recommendation: 'Already played this half-season.' });
       continue;
     }
+    const plannedGw = chipPlan[`${chip.key}${half}`];
+    if (Number.isFinite(plannedGw)) {
+      advice.push(plannedRec(chip, plannedGw, reviewBySlot.get(`${chip.key}${half}`), targetGw));
+      continue;
+    }
     advice.push(recommendFor(chip, { doubles, blanks, peakAttack, tc, targetGw, expiryGw, remaining }));
   }
   return advice;
+}
+
+// A chip the manager has explicitly planned for this half: anchor the advice to their week and
+// attach the validation verdict so the UI can confirm it (✓) or flag a better week (⚠).
+function plannedRec(chip, gw, review, targetGw) {
+  const ok = review ? review.ok : true;
+  const note = review ? review.note : '';
+  if (gw < targetGw) {
+    return { chip: chip.name, status: 'urgent', when: `GW${gw}`, planned: true, ok: false, recommendation: `You'd planned GW${gw}, which has passed — pick a new week.` };
+  }
+  return { chip: chip.name, status: 'planned', when: `GW${gw}`, planned: true, ok, recommendation: `Your plan: fire in GW${gw}.${note ? ` ${note}` : ''}` };
 }
 
 function topFixtureNames(gw) {
