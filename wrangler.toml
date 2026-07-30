@@ -1,0 +1,15 @@
+name = "fpl-assistant"
+compatibility_date = "2026-01-29"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./public"
+
+# No database is needed: the app is advisory-only and reads everything live from the
+# official FPL API (cached at the Cloudflare edge via the Cache API). Your Team ID and
+# League ID live in your browser (localStorage), never on the server.
+
+# Optional: the Claude AI coaching layer reads ANTHROPIC_API_KEY from the environment.
+# Set it as a SECRET (never commit it):
+#   npx wrangler pages secret put ANTHROPIC_API_KEY
+# Without the key the app still works fully — only the AI narrative panel is hidden.

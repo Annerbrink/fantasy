@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FPL Assistant</title>
+  <meta name="description" content="Data-driven Fantasy Premier League transfer, captain, chip and mini-league advice." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="wrap">
+      <h1>⚽ FPL Assistant <span class="badge">beta</span></h1>
+      <p class="sub" id="league-sub">Your data-driven edge to win the mini-league.</p>
+      <nav class="tabs" id="tabs">
+        <button class="tab active" data-tab="dashboard">Dashboard</button>
+        <button class="tab" data-tab="transfers">Transfers</button>
+        <button class="tab" data-tab="captain">Captain &amp; Chips</button>
+        <button class="tab" data-tab="rivals">Rivals</button>
+        <button class="tab" data-tab="setup">Setup</button>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <!-- Dashboard -->
+    <section id="tab-dashboard" class="tab-panel">
+      <div id="dash-content"></div>
+      <div class="card ai-panel" id="ai-card">
+        <h2>🧠 AI Coach</h2>
+        <p class="hint">A weekly game plan written from the numbers below.</p>
+        <div class="ai-body" id="ai-body"><span class="spinner"></span> <span class="muted">Thinking…</span></div>
+      </div>
+    </section>
+
+    <!-- Transfers -->
+    <section id="tab-transfers" class="tab-panel hidden">
+      <div id="transfers-content"></div>
+    </section>
+
+    <!-- Captain & Chips -->
+    <section id="tab-captain" class="tab-panel hidden">
+      <div id="captain-content"></div>
+    </section>
+
+    <!-- Rivals -->
+    <section id="tab-rivals" class="tab-panel hidden">
+      <div id="rivals-content"></div>
+    </section>
+
+    <!-- Setup -->
+    <section id="tab-setup" class="tab-panel hidden">
+      <div class="card">
+        <h2>Setup</h2>
+        <p class="hint">Enter your FPL Team ID and mini-league ID. These are stored only in your browser.</p>
+        <label class="field">
+          <span>FPL Team ID
+            <small>Find it in the URL when you view your team: <code>fantasy.premierleague.com/entry/<b>1234567</b>/…</code></small>
+          </span>
+          <input type="text" id="input-team" inputmode="numeric" placeholder="e.g. 70375" />
+        </label>
+        <label class="field">
+          <span>Classic League ID
+            <small>From your league's standings URL: <code>/leagues-classic/<b>379411</b>/standings/</code></small>
+          </span>
+          <input type="text" id="input-league" inputmode="numeric" placeholder="e.g. 379411" />
+        </label>
+        <button class="primary" id="save-setup">Save &amp; refresh</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Data from the official Fantasy Premier League API. Advice is guidance only — you make the moves on the FPL site.
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
