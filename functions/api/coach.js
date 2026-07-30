@@ -58,6 +58,7 @@ export async function onRequestPost({ request, env }) {
 async function coachWithWorkersAI(env, system, user) {
   const models = [
     env.WORKERS_AI_MODEL,
+    '@cf/meta/llama-3.3-70b-instruct-fp8-fast', // stronger, better at staying on-data
     '@cf/meta/llama-3.1-8b-instruct',
     '@cf/meta/llama-3-8b-instruct',
     '@cf/mistral/mistral-7b-instruct-v0.1',
@@ -72,6 +73,7 @@ async function coachWithWorkersAI(env, system, user) {
           { role: 'user', content: user },
         ],
         max_tokens: 900,
+        temperature: 0.3, // lower creativity → fewer invented players
       });
       const text = (result?.response || '').trim();
       if (!text) throw new Error('empty response');

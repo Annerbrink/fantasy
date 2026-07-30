@@ -114,6 +114,9 @@ function explain(out, inn) {
   if (out.status !== 'a') bits.push(`${out.name} is flagged (${out.news || out.status})`);
   if (inn.onPens) bits.push('on penalties');
   if (inn.form > out.form) bits.push(`better form (${inn.form} vs ${out.form})`);
+  // Price-change timing.
+  if (inn.priceTrend?.direction === 'rising') bits.push(`${inn.name} is rising soon — buy now`);
+  if (out.priceTrend?.direction === 'falling') bits.push(`${out.name} is falling — sell before the drop`);
   return bits.join('; ');
 }
 
@@ -132,6 +135,7 @@ function brief(p) {
     news: p.news,
     onPens: p.onPens,
     selectedBy: p.selectedBy,
+    priceTrend: p.priceTrend || null,
   };
 }
 

@@ -123,7 +123,30 @@ function renderTransfers(a) {
         <tbody>${rows}</tbody>
       </table></div>
       <p class="hint" style="margin-top:10px">${esc(t.single?.[0]?.reason || '')}</p>`}
-    </div>${dbl}${fixtureOutlookCard(a)}`;
+    </div>${dbl}${priceWatchCard(a)}${fixtureOutlookCard(a)}`;
+}
+
+// Predicted price risers (buy before the rise) and fallers (sell before the drop).
+function priceWatchCard(a) {
+  const pw = a.priceWatch;
+  if (!pw || (!pw.risers?.length && !pw.fallers?.length)) return '';
+  const row = (p) => `<tr>
+    <td><strong>${esc(p.name)}</strong> <small class="muted">${esc(p.team)}</small></td>
+    <td class="num">${money(p.price)}</td>
+    <td class="num">${p.changedToday ? `<span class="pill ${p.changedToday > 0 ? 'pos' : 'neg'}">${p.changedToday > 0 ? '+' : ''}£${(p.changedToday / 10).toFixed(1)}m today</span>` : ''}</td>
+  </tr>`;
+  const table = (rows, empty) => rows.length
+    ? `<div class="table-scroll"><table><thead><tr><th>Player</th><th class="num">Price</th><th class="num">Move</th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div>`
+    : `<p class="muted">${empty}</p>`;
+  return `
+    <div class="card">
+      <h2>Price watch</h2>
+      <p class="hint">📈 Predicted to <strong>rise</strong> soon — buy now to gain team value:</p>
+      ${table((pw.risers || []).slice(0, 6), 'No strong risers right now.')}
+      <p class="hint" style="margin-top:12px">📉 Predicted to <strong>fall</strong> — sell before the drop:</p>
+      ${table((pw.fallers || []).slice(0, 6), 'No strong fallers right now.')}
+      <p class="hint" style="margin-top:8px"><small>Predictions from transfer momentum — not guaranteed. "today" = a change already applied this day.</small></p>
+    </div>`;
 }
 
 // Teams with the kindest / toughest upcoming runs — who to buy into and who to avoid.

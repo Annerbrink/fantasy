@@ -9,6 +9,7 @@ import { suggestTransfers, watchlist } from './transfers.js';
 import { pickCaptain } from './captain.js';
 import { chipAdvice } from './chips.js';
 import { analyseRivals, picksToPlayerIds } from './rivals.js';
+import { priceTrends } from './prices.js';
 
 // `data` bundles the raw FPL responses. `entry`, `entryHistory`, `picks`, `standings` and
 // `rivalPicks` are optional — the engine degrades gracefully (pre-season, or no team set).
@@ -18,6 +19,11 @@ export function buildAdvice(data) {
   const targetGw = resolveTargetGw(bootstrap.events);
   const teamById = indexTeams(bootstrap.teams);
   const scored = scorePlayers(bootstrap, fixtures, targetGw);
+
+  // Price-change trends — enrich each scored row so transfer reasons and views can use them.
+  const trends = priceTrends(bootstrap);
+  for (const p of scored) p.priceTrend = trends.byId.get(p.id) || null;
+
   const scoredById = new Map(scored.map((p) => [p.id, p]));
   const playerNameById = new Map(bootstrap.elements.map((p) => [p.id, p.web_name]));
 
@@ -103,6 +109,9 @@ export function buildAdvice(data) {
     dgwBgw,
     attackGws,
     fixtureOutlook,
+    // Closed list of current players so the AI coach never invents departed ones.
+    keyPlayers: watchlist(scored),
+    priceWatch: { risers: trends.risers, fallers: trends.fallers },
     generatedAt: new Date().toISOString(),
   };
 }
