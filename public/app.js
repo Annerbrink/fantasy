@@ -123,7 +123,32 @@ function renderTransfers(a) {
         <tbody>${rows}</tbody>
       </table></div>
       <p class="hint" style="margin-top:10px">${esc(t.single?.[0]?.reason || '')}</p>`}
-    </div>${dbl}`;
+    </div>${dbl}${fixtureOutlookCard(a)}`;
+}
+
+// Teams with the kindest / toughest upcoming runs — who to buy into and who to avoid.
+function fixtureOutlookCard(a) {
+  const o = a.fixtureOutlook;
+  if (!o || !o.best?.length) return '';
+  const runRow = (t) => `<tr>
+    <td><strong>${esc(t.team)}</strong></td>
+    <td class="num">${t.avgDifficulty ?? '—'}</td>
+    <td><small class="muted">${(t.fixtures || []).slice(0, 5).map((f) => `${esc(f.opp)}${f.home ? '' : ' (a)'}`).join(', ')}</small></td>
+  </tr>`;
+  return `
+    <div class="card">
+      <h2>Fixture swings <span class="gw">· next 5 GWs</span></h2>
+      <p class="hint">Good teams with soft runs — prime transfer-in targets (strong sides facing weak defences).</p>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Team</th><th class="num">Avg FDR</th><th>Next fixtures</th></tr></thead>
+        <tbody>${o.best.map(runRow).join('')}</tbody>
+      </table></div>
+      <p class="hint" style="margin-top:12px">Toughest runs — avoid buying, consider selling:</p>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Team</th><th class="num">Avg FDR</th><th>Next fixtures</th></tr></thead>
+        <tbody>${(o.tough || []).slice(0, 4).map(runRow).join('')}</tbody>
+      </table></div>
+    </div>`;
 }
 
 function renderCaptain(a) {
@@ -148,8 +173,16 @@ function renderCaptain(a) {
     `<tr><td>GW ${r.gw}</td><td>${r.doubleTeams.length ? `${r.doubleTeams.length} teams` : '—'}</td><td>${r.blankTeams.length ? `${r.blankTeams.length} teams` : '—'}</td></tr>`
   ).join('');
 
+  const attack = [...(a.attackGws || [])].sort((x, y) => y.index - x.index).slice(0, 5).map((g) => `<tr>
+    <td>GW ${g.gw}</td>
+    <td class="num">${g.index.toFixed(1)}</td>
+    <td><small class="muted">${(g.fixtures || []).slice(0, 3).map((f) => `${esc(f.team)} ${f.home ? 'v' : '@'} ${esc(f.opponent)}`).join(', ')}</small></td>
+  </tr>`).join('');
+
   $('#captain-content').innerHTML = `${capHtml}
-    <div class="card"><h2>Chip strategy</h2><p class="hint">When to fire each chip, based on upcoming fixture swings.</p>${chips}</div>
+    <div class="card"><h2>Chip strategy</h2><p class="hint">When to fire each chip, based on upcoming fixture swings and good-vs-bad matchups.</p>${chips}</div>
+    ${attack ? `<div class="card"><h2>Best attacking gameweeks</h2><p class="hint">Weeks where the most strong teams face weak ones — prime for Triple Captain or Bench Boost.</p><div class="table-scroll"><table>
+      <thead><tr><th>GW</th><th class="num">Index</th><th>Standout fixtures</th></tr></thead><tbody>${attack}</tbody></table></div></div>` : ''}
     ${dgw ? `<div class="card"><h2>Double &amp; blank gameweeks ahead</h2><div class="table-scroll"><table>
       <thead><tr><th>GW</th><th>Doubles</th><th>Blanks</th></tr></thead><tbody>${dgw}</tbody></table></div></div>` : ''}`;
 }

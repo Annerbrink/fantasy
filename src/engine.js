@@ -3,7 +3,7 @@
 // produce the structured advice that feeds both the UI and the Claude coach. Kept separate
 // from the network layer so it can be unit-tested against captured sample payloads.
 
-import { resolveTargetGw, indexTeams, detectDgwBgw } from './fdr.js';
+import { resolveTargetGw, indexTeams, detectDgwBgw, gameweekAttackIndex, teamFixtureOutlook } from './fdr.js';
 import { scorePlayers } from './scoring.js';
 import { suggestTransfers, watchlist } from './transfers.js';
 import { pickCaptain } from './captain.js';
@@ -66,7 +66,11 @@ export function buildAdvice(data) {
   const chipsUsed = new Set();
   for (const c of entryHistory?.chips || []) chipsUsed.add(c.name);
   const dgwBgw = detectDgwBgw(fixtures, bootstrap.teams, targetGw, 10);
-  const chips = chipAdvice({ chipsUsed, dgwBgw, teamById, targetGw });
+  // "Good teams facing bad ones": rank upcoming GWs by attacking opportunity, and rank
+  // teams by the kindness of their upcoming run — feeds chip timing and transfer targets.
+  const attackGws = gameweekAttackIndex(fixtures, bootstrap.teams, targetGw, 10);
+  const fixtureOutlook = teamFixtureOutlook(fixtures, bootstrap.teams, targetGw, 5);
+  const chips = chipAdvice({ chipsUsed, dgwBgw, attackGws, teamById, targetGw });
 
   // --- Rivals -------------------------------------------------------------------------
   let rivals = null;
@@ -97,6 +101,8 @@ export function buildAdvice(data) {
     chips,
     rivals,
     dgwBgw,
+    attackGws,
+    fixtureOutlook,
     generatedAt: new Date().toISOString(),
   };
 }
