@@ -435,18 +435,18 @@ function rankGainCard(r) {
 }
 
 // ---- Draft builder ------------------------------------------------------------------
-function playerChip(p, { bench = false, captain = false, gwPoints = null } = {}) {
+function playerChip(p, { bench = false, captain = false, gwPoints = null, captainMult = 2 } = {}) {
   // When a gameweek is selected, show that GW's projection (horizon total in the tooltip);
-  // otherwise show the horizon total. The captain's points are doubled that week. A blank GW
-  // (0) dims the chip.
+  // otherwise show the horizon total. The captain's points are doubled that week (tripled on a
+  // Triple Captain week). A blank GW (0) dims the chip.
   const perGw = gwPoints != null;
-  const doubled = perGw && captain; // captain scores double
-  const shown = perGw ? (doubled ? Math.round(gwPoints * 2 * 100) / 100 : gwPoints) : p.projHorizon;
+  const doubled = perGw && captain; // captain scores a multiple this week
+  const shown = perGw ? (doubled ? Math.round(gwPoints * captainMult * 100) / 100 : gwPoints) : p.projHorizon;
   const blank = perGw && gwPoints <= 0.01;
   const cls = `player-chip${bench ? ' bench' : ''}${captain ? ' cap' : ''}${blank ? ' blank' : ''}`;
   const nailed = p.nailed ? `<span class="nailed-dot" title="Nailed-on starter (${(p.minutes || 0).toLocaleString()} mins)">●</span>` : '';
-  const ptsTitle = doubled ? ` title="${gwPoints} × 2 (captain)"` : (perGw ? ` title="${p.projHorizon} pts over the horizon"` : '');
-  const capX2 = doubled ? ' <small class="cap-x2">©×2</small>' : '';
+  const ptsTitle = doubled ? ` title="${gwPoints} × ${captainMult} (captain)"` : (perGw ? ` title="${p.projHorizon} pts over the horizon"` : '');
+  const capX2 = doubled ? ` <small class="cap-x2">©×${captainMult}</small>` : '';
   return `<div class="${cls}" data-player-id="${p.id}" data-player-name="${esc(p.name)}" title="See ${esc(p.name)}'s fixtures">
     <button class="pc-replace" data-replace-id="${p.id}" title="Replace ${esc(p.name)}" aria-label="Replace ${esc(p.name)}">⇄</button>
     <div class="pc-name">${esc(p.name)}${nailed}${p.onPens ? ' <small class="muted">(P)</small>' : ''}</div>
@@ -473,9 +473,10 @@ function renderDraft(d) {
   // from a GW view, fall back to the horizon captain.
   const gwCaptainId = selected && selected.captainId != null ? selected.captainId : (d.captain ? d.captain.id : null);
   const gwCaptainName = (d.startingXI.find((p) => p.id === gwCaptainId) || d.captain || {}).name || '—';
+  const captainMult = selected && selected.tripleCaptain ? 3 : 2; // triple on a Triple Captain week
 
   const posRow = (label, players) => `<div class="pitch-pos"><div class="pos-label">${label}</div><div class="pitch-row">${
-    players.map((p) => playerChip(p, { captain: gwCaptainId != null && p.id === gwCaptainId, gwPoints: gwPointsFor(p) })).join('')
+    players.map((p) => playerChip(p, { captain: gwCaptainId != null && p.id === gwCaptainId, gwPoints: gwPointsFor(p), captainMult })).join('')
   }</div></div>`;
 
   const xiByPos = (pos) => d.startingXI.filter((p) => p.position === pos);
@@ -491,7 +492,7 @@ function renderDraft(d) {
     ? `<div class="gw-stepper">
         <button class="ghost gw-nav" id="draft-gw-prev" ${draftGwIndex <= 0 ? 'disabled' : ''} aria-label="Previous gameweek">◀</button>
         <div class="gw-stepper-label"><strong>GW ${selectedGw}</strong> · <span class="gw-total">${xiGwTotal} pts</span> projected${selected && selected.benchBoost ? ' squad 🪑 (Bench Boost)' : ' XI'}
-          <div class="muted">© ${esc(gwCaptainName)} doubled · GW ${draftGwIndex + 1} of ${series.length} · use ◀ ▶ or arrow keys</div>
+          <div class="muted">© ${esc(gwCaptainName)} ${selected && selected.tripleCaptain ? 'tripled 🔺 (Triple Captain)' : 'doubled'} · GW ${draftGwIndex + 1} of ${series.length} · use ◀ ▶ or arrow keys</div>
         </div>
         <button class="ghost gw-nav" id="draft-gw-next" ${draftGwIndex >= series.length - 1 ? 'disabled' : ''} aria-label="Next gameweek">▶</button>
       </div>`
@@ -505,6 +506,7 @@ function renderDraft(d) {
         <div class="muted">${d.isAlternative ? 'vs the optimal squad’s projection' : 'benchmark squad (100)'} · rated on ${esc(d.objectiveLabel || 'XI + captain')} · avg FDR ${d.ratingBreakdown.avgFixtureDifficulty ?? '—'} · value ${d.ratingBreakdown.value} pts/£m</div>
       </div>
       ${d.benchBoostGw != null ? `<p class="hint">🪑 <strong>Bench Boost planned for GW${d.benchBoostGw}:</strong> the bench scores on that one week only, so the squad is built with a bench strong enough for it — every other week only your XI counts.</p>` : ''}
+      ${d.tripleCaptainGw != null ? `<p class="hint">🔺 <strong>Triple Captain planned for GW${d.tripleCaptainGw}:</strong> your captain scores triple that week — reflected in GW${d.tripleCaptainGw}'s projected points.</p>` : ''}
       ${d.edited ? `<div class="lock-note">✏️ Edited squad — rating shown vs the optimal. Use <strong>Build optimal</strong> to reset.</div>` : lockNote(d)}
       <div class="grid" style="margin-bottom:14px">
         ${statTile('Total cost', money(d.totalCost))}
@@ -728,8 +730,9 @@ async function rebuildFromIds(ids) {
   $('#draft-content').innerHTML = `<div class="card"><p class="empty"><span class="spinner"></span> Updating your squad…</p></div>`;
   const horizon = $('#draft-horizon')?.value || lastDraft?.horizon || 5;
   const bb = lastDraft?.benchBoostGw != null ? `&bbGw=${lastDraft.benchBoostGw}` : '';
+  const tc = lastDraft?.tripleCaptainGw != null ? `&tcGw=${lastDraft.tripleCaptainGw}` : '';
   try {
-    const res = await fetch(`/api/draft?budget=${encodeURIComponent($('#draft-budget')?.value.trim() || '100')}&horizon=${encodeURIComponent(horizon)}&lock=${ids.join(',')}${bb}`);
+    const res = await fetch(`/api/draft?budget=${encodeURIComponent($('#draft-budget')?.value.trim() || '100')}&horizon=${encodeURIComponent(horizon)}&lock=${ids.join(',')}${bb}${tc}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     data.edited = true; // mark as a hand-edited squad for the UI note
@@ -844,8 +847,12 @@ async function buildDraft(randomize = false) {
   }
   const bbWeek = planInWindow ? plannedBb : (bbToggle?.checked ? tgw : null);
   const bb = bbWeek != null ? `&bbGw=${bbWeek}` : '';
+  // Triple Captain week from the chip strategy — the captain scores triple that gameweek.
+  const planned3xc = store.chipPlan[`3xc${tgw <= 19 ? 1 : 2}`];
+  const tcWeek = Number.isFinite(planned3xc) && planned3xc >= tgw && planned3xc < tgw + horizonNum ? planned3xc : null;
+  const tc = tcWeek != null ? `&tcGw=${tcWeek}` : '';
   try {
-    const res = await fetch(`/api/draft?budget=${encodeURIComponent(budget)}&horizon=${encodeURIComponent(horizon)}${rnd}${lock}${bb}`);
+    const res = await fetch(`/api/draft?budget=${encodeURIComponent(budget)}&horizon=${encodeURIComponent(horizon)}${rnd}${lock}${bb}${tc}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     lastDraft = await res.json();
     draftGwIndex = 0; // a fresh build starts on the first gameweek

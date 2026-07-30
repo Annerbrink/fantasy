@@ -38,15 +38,18 @@ export async function onRequestGet({ request }) {
   const targetGw = resolveTargetGw(bootstrap.events);
   const scored = scorePlayers(bootstrap, fixtures, targetGw, horizon);
 
-  // The one gameweek you plan to Bench Boost on (from the chip strategy). The bench is valued
-  // only on that week; every other week only the XI scores. Ignored if outside this horizon.
+  // Chip weeks from the chip strategy, within this horizon: the bench is valued only on the
+  // Bench Boost week, and the captain scores triple on the Triple Captain week.
+  const inWindow = (n) => Number.isFinite(n) && n >= targetGw && n < targetGw + horizon;
   const bbGwRaw = parseInt(url.searchParams.get('bbGw') || '', 10);
-  const benchBoostGw = Number.isFinite(bbGwRaw) && bbGwRaw >= targetGw && bbGwRaw < targetGw + horizon ? bbGwRaw : null;
+  const benchBoostGw = inWindow(bbGwRaw) ? bbGwRaw : null;
+  const tcGwRaw = parseInt(url.searchParams.get('tcGw') || '', 10);
+  const tripleCaptainGw = inWindow(tcGwRaw) ? tcGwRaw : null;
 
   // The multi-start best squad (no locks) under the same objective is the rating benchmark.
-  // "Effective" points = what actually scores: the starting XI + captain each week, plus the
-  // bench on the Bench Boost week. Rating and headline both use this, so they can't disagree.
-  const optimal = buildBestDraft(scored, { budget, benchBoostGw });
+  // "Effective" points = what actually scores: the starting XI + captain (tripled on the Triple
+  // Captain week) each week, plus the bench on the Bench Boost week. Rating and headline share it.
+  const optimal = buildBestDraft(scored, { budget, benchBoostGw, tripleCaptainGw });
   const optProj = optimal.effectiveProjection || 1;
 
   let draft = optimal;
@@ -54,10 +57,10 @@ export async function onRequestGet({ request }) {
   let isAlternative = false;
   if (randomize) {
     usedSeed = Number.isFinite(seed) ? seed : (Math.floor(Math.random() * 1e9) | 0);
-    draft = buildDraft(scored, { budget, jitter, rng: mulberry32(usedSeed), lockedIds, benchBoostGw });
+    draft = buildDraft(scored, { budget, jitter, rng: mulberry32(usedSeed), lockedIds, benchBoostGw, tripleCaptainGw });
     isAlternative = true;
   } else if (lockedIds.length) {
-    draft = buildBestDraft(scored, { budget, lockedIds, benchBoostGw });
+    draft = buildBestDraft(scored, { budget, lockedIds, benchBoostGw, tripleCaptainGw });
   }
 
   const rating = Math.max(0, Math.min(100, Math.round((draft.effectiveProjection / optProj) * 100)));
@@ -65,7 +68,7 @@ export async function onRequestGet({ request }) {
 
   // The best single free transfer for the displayed squad (your one free move each gameweek).
   const squadIds = [...draft.startingXI, ...draft.bench].map((p) => p.id);
-  const topTransfer = bestSingleTransfer(scored, squadIds, { benchBoostGw, budgetRemaining: draft.remaining });
+  const topTransfer = bestSingleTransfer(scored, squadIds, { benchBoostGw, tripleCaptainGw, budgetRemaining: draft.remaining });
 
   return new Response(
     JSON.stringify({

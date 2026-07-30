@@ -24,13 +24,15 @@ function proj(p) {
 // captain is the highest-projecting starter that gameweek and their points are doubled (that's
 // how the armband works — and it can switch week to week, e.g. across a Double Gameweek). Only
 // the starting XI scores in a normal week; the bench scores too *only on the one chosen Bench
-// Boost gameweek* (`benchBoostGw`), since the chip fires on a single week. Returns one entry per
-// GW: { gw, points (incl. captain), base (excl.), benchBoost, captainId, captainPoints }.
-export function squadSeries(startingXI, bench = [], benchBoostGw = null) {
+// Boost gameweek* (`benchBoostGw`), and the captain scores *triple* instead of double on the one
+// chosen Triple Captain gameweek (`tripleCaptainGw`). Returns one entry per GW:
+// { gw, points (incl. captain), base (excl.), benchBoost, tripleCaptain, captainId, captainPoints }.
+export function squadSeries(startingXI, bench = [], benchBoostGw = null, tripleCaptainGw = null) {
   const gws = (startingXI[0]?.pointsByGw || []).map((g) => g.gw);
   const ptOf = (p, gw) => p.pointsByGw?.find((g) => g.gw === gw)?.points || 0;
   return gws.map((gw) => {
     const isBB = benchBoostGw != null && gw === benchBoostGw;
+    const isTC = tripleCaptainGw != null && gw === tripleCaptainGw;
     const scorers = isBB ? [...startingXI, ...bench] : startingXI;
     const base = scorers.reduce((s, p) => s + ptOf(p, gw), 0);
     let captainId = null;
@@ -39,22 +41,25 @@ export function squadSeries(startingXI, bench = [], benchBoostGw = null) {
       const v = ptOf(p, gw);
       if (v > captainPoints) { captainPoints = v; captainId = p.id; }
     }
-    return { gw, points: round(base + captainPoints), base: round(base), benchBoost: isBB, captainId, captainPoints: round(captainPoints) };
+    // The captain's points are already counted once in `base`; the armband adds them again
+    // (double), and the Triple Captain chip adds them a second time on top (triple).
+    const captainExtra = (isTC ? 2 : 1) * captainPoints;
+    return { gw, points: round(base + captainExtra), base: round(base), benchBoost: isBB, tripleCaptain: isTC, captainId, captainPoints: round(captainPoints) };
   });
 }
 
 // What the squad actually scores over the horizon, and the single objective the optimiser, the
 // rating and the headline all share, so they can never disagree: the per-GW series (which
-// doubles the best starter each week and adds the bench only on the Bench Boost week) summed.
-export function effectiveProjection(startingXI, bench = [], benchBoostGw = null) {
-  return round(squadSeries(startingXI, bench, benchBoostGw).reduce((s, g) => s + g.points, 0));
+// doubles/triples the captain and adds the bench only on the Bench Boost week) summed.
+export function effectiveProjection(startingXI, bench = [], benchBoostGw = null, tripleCaptainGw = null) {
+  return round(squadSeries(startingXI, bench, benchBoostGw, tripleCaptainGw).reduce((s, g) => s + g.points, 0));
 }
 
 // The single best free transfer for an exact 15-man squad: the same-position swap — affordable
 // within the remaining bank, club-legal (max 3/club), not already owned — that most improves the
 // squad's effective projection. Returns { out, in, gain } or null when no swap helps. This is the
 // manager's one free transfer per gameweek (extra transfers cost -4, handled in the UI copy).
-export function bestSingleTransfer(scored, squadIds, { benchBoostGw = null, budgetRemaining = 0 } = {}) {
+export function bestSingleTransfer(scored, squadIds, { benchBoostGw = null, tripleCaptainGw = null, budgetRemaining = 0 } = {}) {
   const byId = new Map(scored.map((p) => [p.id, p]));
   const picked = squadIds.map((id) => byId.get(id)).filter(Boolean);
   if (picked.length !== 15) return null;
@@ -65,7 +70,7 @@ export function bestSingleTransfer(scored, squadIds, { benchBoostGw = null, budg
   const effOf = (list) => {
     const xi = pickStartingXI(list);
     const startIds = new Set(xi.map((p) => p.id));
-    return effectiveProjection(xi, list.filter((p) => !startIds.has(p.id)), benchBoostGw);
+    return effectiveProjection(xi, list.filter((p) => !startIds.has(p.id)), benchBoostGw, tripleCaptainGw);
   };
   const curEff = effOf(picked);
 
@@ -109,15 +114,15 @@ export function mulberry32(seed) {
 // Multi-start "optimal": the plain greedy only finds a local optimum, so we also run several
 // jittered restarts and keep the highest-projecting *complete* squad. This is the squad shown
 // as "optimal" and the benchmark the team rating is scored against.
-export function buildBestDraft(scored, { budget = 100.0, attempts = 16, jitter = 0.35, lockedIds = [], benchBoostGw = null } = {}) {
-  let best = buildDraft(scored, { budget, lockedIds, benchBoostGw });
+export function buildBestDraft(scored, { budget = 100.0, attempts = 16, jitter = 0.35, lockedIds = [], benchBoostGw = null, tripleCaptainGw = null } = {}) {
+  let best = buildDraft(scored, { budget, lockedIds, benchBoostGw, tripleCaptainGw });
   const consider = (candidate) => {
     if (candidate.complete && candidate.effectiveProjection > best.effectiveProjection) best = candidate;
   };
   // Jittered restarts escape the greedy's local optimum.
   for (let i = 1; i <= attempts; i += 1) {
     const seed = (Math.imul(i, 2654435761) ^ 0x9e3779b9) >>> 0;
-    consider(buildDraft(scored, { budget, jitter, rng: mulberry32(seed), lockedIds, benchBoostGw }));
+    consider(buildDraft(scored, { budget, jitter, rng: mulberry32(seed), lockedIds, benchBoostGw, tripleCaptainGw }));
   }
   // Premium-anchored restarts: a pure greedy skips a £15m striker on value grounds, so seed a
   // build around each of the top projectors (that aren't already forced) — the effective
@@ -128,7 +133,7 @@ export function buildBestDraft(scored, { budget = 100.0, attempts = 16, jitter =
     .sort((a, b) => proj(b) - proj(a))
     .slice(0, 6);
   for (const p of premiums) {
-    consider(buildDraft(scored, { budget, lockedIds: [...lockedIds, p.id], benchBoostGw }));
+    consider(buildDraft(scored, { budget, lockedIds: [...lockedIds, p.id], benchBoostGw, tripleCaptainGw }));
   }
   return best;
 }
@@ -136,7 +141,7 @@ export function buildBestDraft(scored, { budget = 100.0, attempts = 16, jitter =
 // benchBoostGw: the one gameweek you intend to play Bench Boost on (from the chip strategy). On
 // that week the whole bench scores, so the squad is valued as 15; every other week only the XI
 // scores. Null = no Bench Boost planned in this horizon.
-export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.random, lockedIds = [], benchBoostGw = null } = {}) {
+export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.random, lockedIds = [], benchBoostGw = null, tripleCaptainGw = null } = {}) {
   const pool = scored.filter((p) => available(p) && p.price > 0);
 
   // Perturbed selection score. jitter = 0 → true projection (the optimal squad); jitter > 0
@@ -233,15 +238,16 @@ export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.rand
   const vice = [...startingXI].sort((a, b) => proj(b) - proj(a))[1] || null;
 
   const squadProjection = round(picked.reduce((s, p) => s + proj(p), 0));
-  // Per-GW points with the captain doubled each week; the bench counts only on the Bench Boost
-  // gameweek.
-  const series = squadSeries(startingXI, bench, benchBoostGw);
+  // Per-GW points with the captain doubled (tripled on the Triple Captain week); the bench counts
+  // only on the Bench Boost gameweek.
+  const series = squadSeries(startingXI, bench, benchBoostGw, tripleCaptainGw);
   const effective = round(series.reduce((s, g) => s + g.points, 0));
   const avgFixtureDifficulty = squadAvgDifficulty(picked);
 
   return {
     budget,
     benchBoostGw,
+    tripleCaptainGw,
     totalCost: spend,
     remaining: round(budget - spend),
     complete: picked.length === 15,

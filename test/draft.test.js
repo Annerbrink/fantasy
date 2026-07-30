@@ -88,6 +88,21 @@ test('the optimal squad never scores fewer effective points than a locked varian
   }
 });
 
+test('Triple Captain triples the captain on only the chosen gameweek', () => {
+  const boot = bigBootstrap();
+  const scored = scorePlayers(boot, makeFixtures(), 1, 5);
+  const plain = buildBestDraft(scored, { budget: 100 });
+  const tc = buildBestDraft(scored, { budget: 100, tripleCaptainGw: 1 });
+  const g1 = tc.pointsByGw.find((g) => g.gw === 1);
+  const g2 = tc.pointsByGw.find((g) => g.gw === 2);
+  assert.equal(g1.tripleCaptain, true, 'GW1 is the Triple Captain week');
+  assert.equal(g2.tripleCaptain, false, 'other weeks are unaffected');
+  // GW1 total is base + 2×captain (triple); a normal week is base + 1×captain (double).
+  assert.ok(Math.abs(g1.points - (g1.base + 2 * g1.captainPoints)) < 0.01, 'captain tripled on the TC week');
+  assert.ok(Math.abs(g2.points - (g2.base + g2.captainPoints)) < 0.01, 'captain only doubled elsewhere');
+  assert.ok(tc.effectiveProjection > plain.effectiveProjection - 1e-6, 'Triple Captain adds points');
+});
+
 test('Bench Boost is applied to only the chosen gameweek', () => {
   const boot = bigBootstrap();
   const scored = scorePlayers(boot, makeFixtures(), 1, 5);
