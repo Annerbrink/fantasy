@@ -212,6 +212,8 @@ function brief(p) {
     projHorizon: p.projHorizon ?? p.projNext3,
     selectedBy: p.selectedBy,
     onPens: p.onPens,
+    minutes: p.minutes || 0,
+    nailed: p.nailed || false,
   };
 }
 

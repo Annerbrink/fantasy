@@ -56,6 +56,30 @@ test('scorePlayers attaches per-GW projection and advanced Opta stats', () => {
   assert.equal(p.advanced.ict, 120);
 });
 
+test('minutes reliability makes a nailed starter out-project a fringe player with equal rates', () => {
+  // Same per-appearance rates, very different playing time.
+  const boot = makeBootstrap([
+    makeElement({ id: 1, ep_next: '5.0', points_per_game: '5.0', starts: 34, minutes: 3000 }),
+    makeElement({ id: 2, ep_next: '5.0', points_per_game: '5.0', starts: 6, minutes: 500 }),
+  ]);
+  const scored = scorePlayers(boot, makeFixtures(), 1);
+  const nailed = scored.find((p) => p.id === 1);
+  const fringe = scored.find((p) => p.id === 2);
+  assert.ok(nailed.projNext3 > fringe.projNext3, 'the regular starter projects higher');
+  assert.ok(nailed.nailed === true && fringe.nailed === false);
+});
+
+test('minutes reliability is neutral when no minutes data exists (guard)', () => {
+  // makeElement has no starts/minutes → refs are zero → reliability 1 for all, ordering intact.
+  const boot = makeBootstrap([
+    makeElement({ id: 1, ep_next: '6.0' }),
+    makeElement({ id: 2, ep_next: '3.0' }),
+  ]);
+  const scored = scorePlayers(boot, makeFixtures(), 1);
+  assert.equal(scored[0].reliability, 1);
+  assert.ok(scored.find((p) => p.id === 1).projNext3 > scored.find((p) => p.id === 2).projNext3);
+});
+
 test('topByPosition excludes owned and unavailable players and respects price cap', () => {
   const boot = makeBootstrap([
     makeElement({ id: 1, element_type: 3, now_cost: 60, ep_next: '6.0' }),

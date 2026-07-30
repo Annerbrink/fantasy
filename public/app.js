@@ -282,8 +282,9 @@ function emptyCard(msg) { return `<div class="card"><p class="empty">${esc(msg)}
 // ---- Draft builder ------------------------------------------------------------------
 function playerChip(p, { bench = false, captain = false } = {}) {
   const cls = `player-chip${bench ? ' bench' : ''}${captain ? ' cap' : ''}`;
+  const nailed = p.nailed ? `<span class="nailed-dot" title="Nailed-on starter (${(p.minutes || 0).toLocaleString()} mins)">●</span>` : '';
   return `<div class="${cls}">
-    <div class="pc-name">${esc(p.name)}${p.onPens ? ' <small class="muted">(P)</small>' : ''}</div>
+    <div class="pc-name">${esc(p.name)}${nailed}${p.onPens ? ' <small class="muted">(P)</small>' : ''}</div>
     <div class="pc-meta"><span>${esc(p.team)} · ${money(p.price)}</span><span>${p.projHorizon} pts</span></div>
   </div>`;
 }

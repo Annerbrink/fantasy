@@ -88,10 +88,26 @@ function advancedStats(player) {
   };
 }
 
+// Minutes reliability ("nailed-ness"): FPL points require playing time, so a limited-minutes
+// player should not project like a regular starter with the same per-appearance rates. From a
+// blend of start-share and minutes-share (normalised to the league maxima, so it scales with
+// the season and works pre-season off last-season totals). `refs` = { maxStarts, maxMinutes }.
+// Returns 0.35..1.0; neutral (1) when there is no minutes data at all.
+export function minutesReliability(player, refs) {
+  const maxStarts = refs?.maxStarts || 0;
+  const maxMinutes = refs?.maxMinutes || 0;
+  if (maxStarts === 0 && maxMinutes === 0) return 1;
+  const startShare = maxStarts > 0 ? (player.starts || 0) / maxStarts : 0;
+  const minShare = maxMinutes > 0 ? (player.minutes || 0) / maxMinutes : 0;
+  const share = 0.6 * startShare + 0.4 * minShare;
+  return 0.35 + 0.65 * Math.max(0, Math.min(1, share));
+}
+
 // Project a player over a set of upcoming fixtures. Each fixture contributes
 // base * difficultyMultiplier; a Double Gameweek naturally contributes twice, a Blank zero.
-function projectOverFixtures(player, fixtures) {
-  const base = baseExpectation(player) + underlyingBonus(player);
+// `reliability` scales the whole projection by expected playing time.
+function projectOverFixtures(player, fixtures, reliability = 1) {
+  const base = (baseExpectation(player) + underlyingBonus(player)) * reliability;
   const avail = availabilityFactor(player);
   let total = 0;
   for (const fx of fixtures) {
@@ -102,8 +118,8 @@ function projectOverFixtures(player, fixtures) {
 
 // Per-gameweek projection: one point total per GW across the window (a Double Gameweek sums
 // both fixtures, a Blank is 0). Powers the points-over-gameweeks chart.
-export function projectByGameweek(player, fixtures, targetGw, window = 6) {
-  const base = baseExpectation(player) + underlyingBonus(player);
+export function projectByGameweek(player, fixtures, targetGw, window = 6, reliability = 1) {
+  const base = (baseExpectation(player) + underlyingBonus(player)) * reliability;
   const avail = availabilityFactor(player);
   const fx = teamFixturesFrom(fixtures, player.team, targetGw, window);
   const out = [];
@@ -132,13 +148,19 @@ export function sumPointsByGw(players) {
 // fixtures array; `targetGw` is the gameweek we're planning for.
 export function scorePlayers(bootstrap, fixtures, targetGw, horizon = 0) {
   const teamById = new Map(bootstrap.teams.map((t) => [t.id, t]));
+  // League maxima for the minutes-reliability normalisation (computed once).
+  const refs = {
+    maxStarts: Math.max(0, ...bootstrap.elements.map((p) => p.starts || 0)),
+    maxMinutes: Math.max(0, ...bootstrap.elements.map((p) => p.minutes || 0)),
+  };
   return bootstrap.elements.map((p) => {
+    const reliability = minutesReliability(p, refs);
     const next1 = teamFixturesFrom(fixtures, p.team, targetGw, 1);
     const next3 = teamFixturesFrom(fixtures, p.team, targetGw, 3);
-    const projNext = projectOverFixtures(p, next1);
-    const projNext3 = projectOverFixtures(p, next3);
+    const projNext = projectOverFixtures(p, next1, reliability);
+    const projNext3 = projectOverFixtures(p, next3, reliability);
     // Optional longer horizon (e.g. the draft builder projects several GWs ahead).
-    const projHorizon = horizon > 0 ? projectOverFixtures(p, teamFixturesFrom(fixtures, p.team, targetGw, horizon)) : projNext3;
+    const projHorizon = horizon > 0 ? projectOverFixtures(p, teamFixturesFrom(fixtures, p.team, targetGw, horizon), reliability) : projNext3;
     const price = p.now_cost / 10;
     return {
       id: p.id,
@@ -163,9 +185,13 @@ export function scorePlayers(bootstrap, fixtures, targetGw, horizon = 0) {
       projNext3: round(projNext3),
       projHorizon: round(projHorizon),
       // Per-gameweek projection for the points graph (draft horizon, else a 6-GW default).
-      pointsByGw: projectByGameweek(p, fixtures, targetGw, horizon > 0 ? horizon : 6),
+      pointsByGw: projectByGameweek(p, fixtures, targetGw, horizon > 0 ? horizon : 6, reliability),
       // Opta-derived advanced stats (free from bootstrap-static).
       advanced: advancedStats(p),
+      // Minutes reliability ("nailed-ness") — how much playing time weights the projection.
+      reliability: Math.round(reliability * 100) / 100,
+      nailed: reliability >= 0.8,
+      minutes: p.minutes || 0,
       // Value = projected points over the next 3 GWs per £m — the transfer/watchlist metric.
       value: price > 0 ? round(projNext3 / price) : 0,
       fixturesNext3: next3,

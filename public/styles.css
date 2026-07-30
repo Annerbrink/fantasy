@@ -174,6 +174,7 @@ button.ghost {
 .player-chip .pc-meta { color: var(--text-dim); font-size: .78rem; margin-top: 2px; display: flex; justify-content: space-between; gap: 8px; }
 .player-chip.bench { opacity: .72; }
 .player-chip.cap .pc-name::after { content: ' Ⓒ'; color: var(--pl-magenta); }
+.nailed-dot { color: var(--pl-green); font-size: .7em; vertical-align: middle; margin-left: 4px; }
 /* Points-per-gameweek bar chart (inline SVG, theme-aware). */
 .chart-scroll { overflow-x: auto; }
 .pts-chart { width: 100%; min-width: 320px; height: auto; display: block; }
