@@ -38,3 +38,11 @@ test('coach prompt surfaces price risers and fallers', () => {
   assert.match(user, /Semenyo/);
   assert.match(user, /priceFallers/);
 });
+
+test('coach prompt includes expert guidance (FPL Harry) and instructs the model to weight it', () => {
+  const { user, system } = buildCoachMessages(advice);
+  assert.match(user, /expertGuidance/);
+  assert.match(user, /FPL Harry/);
+  assert.match(system, /expertGuidance/i);
+  assert.match(system, /Defcon|penalty\/set-piece|nailed/i);
+});

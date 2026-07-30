@@ -69,6 +69,26 @@ test('minutes reliability makes a nailed starter out-project a fringe player wit
   assert.ok(nailed.nailed === true && fringe.nailed === false);
 });
 
+test('penalty and set-piece takers project higher than an identical non-taker', () => {
+  const boot = makeBootstrap([
+    makeElement({ id: 1, ep_next: '4.0', penalties_order: 1, direct_freekicks_order: 1 }),
+    makeElement({ id: 2, ep_next: '4.0' }),
+  ]);
+  const scored = scorePlayers(boot, makeFixtures(), 1);
+  const taker = scored.find((p) => p.id === 1);
+  const plain = scored.find((p) => p.id === 2);
+  assert.ok(taker.projNext3 > plain.projNext3, 'the penalty/set-piece taker has a higher floor');
+});
+
+test('strong defensive-contribution players get a meaningful projection nudge', () => {
+  const boot = makeBootstrap([
+    makeElement({ id: 1, element_type: 2, ep_next: '3.0', defensive_contribution_per_90: '15' }),
+    makeElement({ id: 2, element_type: 2, ep_next: '3.0', defensive_contribution_per_90: '0' }),
+  ]);
+  const scored = scorePlayers(boot, makeFixtures(), 1);
+  assert.ok(scored.find((p) => p.id === 1).projNext3 > scored.find((p) => p.id === 2).projNext3);
+});
+
 test('minutes reliability is neutral when no minutes data exists (guard)', () => {
   // makeElement has no starts/minutes → refs are zero → reliability 1 for all, ordering intact.
   const boot = makeBootstrap([

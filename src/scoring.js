@@ -64,8 +64,13 @@ function underlyingBonus(player) {
   const defCon90 = num(player.defensive_contribution_per_90);
   const attack = Math.min(xgi90 * 0.6, 1.2);
   const ictNudge = Math.min(ict / 1500, 0.4); // ~0.4 max for elite ICT
-  const defNudge = Math.min(defCon90 / 30, 0.4); // rewards high-tackle/CBI defenders & mids
-  return attack + ictNudge + defNudge;
+  // Defensive Contributions are a major, repeatable points source this season — weight them.
+  const defNudge = Math.min(defCon90 / 25, 0.6);
+  // "Multiple routes to points": penalty and set-piece takers carry a higher floor.
+  const onPens = player.penalties_order === 1;
+  const onSetPieces = player.corners_and_indirect_freekicks_order === 1 || player.direct_freekicks_order === 1;
+  const setPieceBonus = (onPens ? 0.5 : 0) + (onSetPieces ? 0.25 : 0);
+  return attack + ictNudge + defNudge + setPieceBonus;
 }
 
 // Opta-derived advanced stats carried on each scored row (all free from bootstrap-static).
