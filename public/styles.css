@@ -152,6 +152,16 @@ button.ghost {
 }
 
 .draft-controls { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; }
+.lock-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-top: 14px; }
+.locked-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.locked-chip {
+  display: inline-flex; align-items: center; gap: 6px; background: rgba(233,0,82,.12);
+  border: 1px solid var(--pl-magenta); color: var(--text); border-radius: 20px;
+  padding: 4px 6px 4px 12px; font-size: .82rem; font-weight: 600;
+}
+.locked-chip button { background: none; border: none; color: var(--pl-magenta); cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 4px; }
+.lock-note { font-size: .82rem; color: var(--text-dim); margin-top: 6px; }
+.lock-warn { color: var(--pl-magenta); }
 .inline-field span { display: block; font-size: .8rem; color: var(--text-dim); margin-bottom: 4px; font-weight: 600; }
 .inline-field input, .inline-field select {
   padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px;

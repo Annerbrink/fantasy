@@ -28,12 +28,18 @@ export async function onRequestGet({ request }) {
   const randomize = url.searchParams.get('randomize') === '1';
   const jitter = Math.min(Math.max(parseFloat(url.searchParams.get('jitter') || '0.28') || 0.28, 0.05), 0.6);
   const seed = parseInt(url.searchParams.get('seed') || '', 10);
+  // Must-have players to lock into the squad (the optimiser builds the rest around them).
+  const lockedIds = (url.searchParams.get('lock') || '')
+    .split(',')
+    .map((s) => parseInt(s, 10))
+    .filter((n) => Number.isFinite(n))
+    .slice(0, 15);
 
   const [bootstrap, fixtures] = await Promise.all([fpl.bootstrap(), fpl.fixtures()]);
   const targetGw = resolveTargetGw(bootstrap.events);
   const scored = scorePlayers(bootstrap, fixtures, targetGw, horizon);
 
-  // The multi-start best squad is the rating benchmark (100).
+  // The multi-start best squad (no locks) is the rating benchmark (100).
   const optimal = buildBestDraft(scored, { budget });
   const optProj = optimal.squadProjection || 1;
 
@@ -42,8 +48,10 @@ export async function onRequestGet({ request }) {
   let isAlternative = false;
   if (randomize) {
     usedSeed = Number.isFinite(seed) ? seed : (Math.floor(Math.random() * 1e9) | 0);
-    draft = buildDraft(scored, { budget, jitter, rng: mulberry32(usedSeed) });
+    draft = buildDraft(scored, { budget, jitter, rng: mulberry32(usedSeed), lockedIds });
     isAlternative = true;
+  } else if (lockedIds.length) {
+    draft = buildBestDraft(scored, { budget, lockedIds });
   }
 
   const rating = Math.max(0, Math.min(100, Math.round((draft.squadProjection / optProj) * 100)));

@@ -94,6 +94,29 @@ test('a jittered draft stays legal, and the multi-start best is the projection c
   assert.ok(best.squadProjection >= alt.squadProjection - 1e-6);
 });
 
+test('locked players are always included and never swapped out', () => {
+  const boot = bigBootstrap();
+  const scored = scorePlayers(boot, makeFixtures(), 1, 5);
+  // Lock a couple of low-projection players the optimiser would normally skip.
+  const weak = [...scored].sort((a, b) => a.projNext3 - b.projNext3).filter((p) => p.elementType === 3).slice(0, 1);
+  const lockId = weak[0].id;
+  const draft = buildDraft(scored, { budget: 100, lockedIds: [lockId] });
+  const all = [...draft.squad.GKP, ...draft.squad.DEF, ...draft.squad.MID, ...draft.squad.FWD];
+  assert.equal(all.length, 15, 'still a full squad');
+  assert.ok(all.some((p) => p.id === lockId), 'the locked player is in the squad');
+  assert.ok(draft.lockedIncluded.some((p) => p.id === lockId));
+});
+
+test('a locked player that breaks a constraint is reported excluded', () => {
+  const boot = bigBootstrap();
+  const scored = scorePlayers(boot, makeFixtures(), 1, 5);
+  // Lock four forwards — only 3 fit the squad, so at least one is excluded.
+  const fwds = scored.filter((p) => p.elementType === 4).slice(0, 4).map((p) => p.id);
+  const draft = buildDraft(scored, { budget: 100, lockedIds: fwds });
+  assert.ok(draft.lockedExcluded.length >= 1, 'a 4th forward cannot be locked');
+  assert.equal(draft.squad.FWD.length, 3);
+});
+
 test('same seed reproduces the same alternative draft', () => {
   const boot = bigBootstrap();
   const scored = scorePlayers(boot, makeFixtures(), 1, 5);

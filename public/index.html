@@ -73,6 +73,15 @@
           <button class="primary" id="draft-build">Build optimal</button>
           <button class="ghost" id="draft-random">🎲 Randomize</button>
         </div>
+        <div class="lock-row">
+          <label class="inline-field" style="flex:1; min-width:200px">
+            <span>Lock in must-have players</span>
+            <input type="text" id="lock-input" list="player-list" placeholder="Type a player name, then Lock…" autocomplete="off" />
+          </label>
+          <button class="ghost" id="lock-add">＋ Lock</button>
+          <datalist id="player-list"></datalist>
+        </div>
+        <div class="locked-chips" id="locked-chips"></div>
       </div>
       <div id="draft-content"></div>
     </section>

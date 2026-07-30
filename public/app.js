@@ -313,6 +313,7 @@ function renderDraft(d) {
         <div class="rating-score"><span class="pill ${ratingColor}">${d.rating}/100</span> <strong>${esc(d.grade)}</strong></div>
         <div class="muted">${d.isAlternative ? 'vs the optimal squad’s projection' : 'benchmark squad (100)'} · avg FDR ${d.ratingBreakdown.avgFixtureDifficulty ?? '—'} · value ${d.ratingBreakdown.value} pts/£m</div>
       </div>
+      ${lockNote(d)}
       <div class="grid" style="margin-bottom:14px">
         ${statTile('Total cost', money(d.totalCost))}
         ${statTile('In the bank', money(d.remaining))}
@@ -331,14 +332,74 @@ function renderDraft(d) {
     ${pointsChart(d.pointsByGw, { heading: 'Squad projected points', subtitle: 'Starting XI projection per gameweek over your chosen horizon.' })}`;
 }
 
+// ---- Locked (must-have) players -----------------------------------------------------
+const lockedPlayers = [];
+const playerByLabel = new Map();
+let playersLoaded = false;
+
+async function loadPlayers() {
+  if (playersLoaded) return;
+  try {
+    const { players } = await (await fetch('/api/players')).json();
+    const dl = $('#player-list');
+    dl.innerHTML = players
+      .map((p) => {
+        const label = `${p.name} — ${p.team} · ${p.position} · ${money(p.price)}`;
+        playerByLabel.set(label.toLowerCase(), p);
+        return `<option value="${esc(label)}"></option>`;
+      })
+      .join('');
+    playersLoaded = true;
+  } catch { /* search just won't autocomplete */ }
+}
+
+function renderLockedChips() {
+  $('#locked-chips').innerHTML = lockedPlayers
+    .map((p, i) => `<span class="locked-chip">${esc(p.name)} <small class="muted">${esc(p.team)}</small><button data-i="${i}" title="Remove">×</button></span>`)
+    .join('');
+  document.querySelectorAll('#locked-chips button').forEach((b) =>
+    b.addEventListener('click', () => { lockedPlayers.splice(Number(b.dataset.i), 1); renderLockedChips(); })
+  );
+}
+
+function addLock() {
+  const val = $('#lock-input').value.trim().toLowerCase();
+  if (!val) return;
+  // Exact datalist match first, else best prefix match on name.
+  let p = playerByLabel.get(val);
+  if (!p) {
+    for (const [label, pl] of playerByLabel) {
+      if (label.startsWith(val) || pl.name.toLowerCase() === val) { p = pl; break; }
+    }
+  }
+  if (!p) return;
+  if (lockedPlayers.some((x) => x.id === p.id) || lockedPlayers.length >= 15) return;
+  lockedPlayers.push(p);
+  $('#lock-input').value = '';
+  renderLockedChips();
+}
+$('#lock-add').addEventListener('click', addLock);
+$('#lock-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addLock(); } });
+
+function lockNote(d) {
+  const inc = d.lockedIncluded || [];
+  const exc = d.lockedExcluded || [];
+  if (!inc.length && !exc.length) return '';
+  let html = '';
+  if (inc.length) html += `<div class="lock-note">🔒 Locked in: <strong>${inc.map((p) => esc(p.name)).join(', ')}</strong> — squad built around them.</div>`;
+  if (exc.length) html += `<div class="lock-note lock-warn">⚠ Couldn't lock: ${exc.map((p) => `${esc(p.name || 'player')} (${esc(p.reason)})`).join(', ')}. Adjust budget or picks.</div>`;
+  return html;
+}
+
 async function buildDraft(randomize = false) {
   const budget = $('#draft-budget').value.trim() || '100';
   const horizon = $('#draft-horizon').value;
   const label = randomize ? 'Rolling an alternative squad…' : 'Optimising your squad…';
   $('#draft-content').innerHTML = `<div class="card"><p class="empty"><span class="spinner"></span> ${label}</p></div>`;
   const rnd = randomize ? `&randomize=1&seed=${Math.floor(Math.random() * 1e9)}` : '';
+  const lock = lockedPlayers.length ? `&lock=${lockedPlayers.map((p) => p.id).join(',')}` : '';
   try {
-    const res = await fetch(`/api/draft?budget=${encodeURIComponent(budget)}&horizon=${encodeURIComponent(horizon)}${rnd}`);
+    const res = await fetch(`/api/draft?budget=${encodeURIComponent(budget)}&horizon=${encodeURIComponent(horizon)}${rnd}${lock}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     renderDraft(await res.json());
   } catch (e) {
@@ -347,9 +408,10 @@ async function buildDraft(randomize = false) {
 }
 $('#draft-build').addEventListener('click', () => buildDraft(false));
 $('#draft-random').addEventListener('click', () => buildDraft(true));
-// Build once the first time the Draft tab is opened.
+// Build once the first time the Draft tab is opened, and load the player index for locking.
 let draftLoaded = false;
 document.querySelector('.tab[data-tab="draft"]').addEventListener('click', () => {
+  loadPlayers();
   if (!draftLoaded) { draftLoaded = true; buildDraft(false); }
 });
 

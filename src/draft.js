@@ -41,17 +41,17 @@ export function mulberry32(seed) {
 // Multi-start "optimal": the plain greedy only finds a local optimum, so we also run several
 // jittered restarts and keep the highest-projecting *complete* squad. This is the squad shown
 // as "optimal" and the benchmark the team rating is scored against.
-export function buildBestDraft(scored, { budget = 100.0, attempts = 16, jitter = 0.35 } = {}) {
-  let best = buildDraft(scored, { budget });
+export function buildBestDraft(scored, { budget = 100.0, attempts = 16, jitter = 0.35, lockedIds = [] } = {}) {
+  let best = buildDraft(scored, { budget, lockedIds });
   for (let i = 1; i <= attempts; i += 1) {
     const seed = (Math.imul(i, 2654435761) ^ 0x9e3779b9) >>> 0;
-    const candidate = buildDraft(scored, { budget, jitter, rng: mulberry32(seed) });
+    const candidate = buildDraft(scored, { budget, jitter, rng: mulberry32(seed), lockedIds });
     if (candidate.complete && candidate.squadProjection > best.squadProjection) best = candidate;
   }
   return best;
 }
 
-export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.random } = {}) {
+export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.random, lockedIds = [] } = {}) {
   const pool = scored.filter((p) => available(p) && p.price > 0);
 
   // Perturbed selection score. jitter = 0 → true projection (the optimal squad); jitter > 0
@@ -72,9 +72,9 @@ export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.rand
   const need = { ...SQUAD };
   const picked = [];
   const teamCount = new Map();
+  const ownedIds = new Set();
   let spend = 0;
 
-  const ranked = [...pool].sort((a, b) => score(b) - score(a));
   const totalSlots = () => Object.values(need).reduce((s, n) => s + n, 0);
   const reserveAfter = (etPicked) => {
     let reserve = 0;
@@ -84,21 +84,41 @@ export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.rand
     }
     return reserve;
   };
-
-  for (const p of ranked) {
-    if (totalSlots() === 0) break;
+  const tryAdd = (p) => {
     const et = p.elementType;
-    if (need[et] <= 0) continue;
-    if ((teamCount.get(p.teamId) || 0) >= MAX_PER_TEAM) continue;
-    if (spend + p.price + reserveAfter(et) > budget + 1e-9) continue;
-
+    if (need[et] <= 0) return 'position full';
+    if ((teamCount.get(p.teamId) || 0) >= MAX_PER_TEAM) return `max ${MAX_PER_TEAM} from ${p.team}`;
+    if (spend + p.price + reserveAfter(et) > budget + 1e-9) return 'over budget';
     picked.push(p);
+    ownedIds.add(p.id);
     need[et] -= 1;
     spend = round(spend + p.price);
     teamCount.set(p.teamId, (teamCount.get(p.teamId) || 0) + 1);
+    return null;
+  };
+
+  // Lock in the user's must-have players first (sourced from all scored players so a flagged
+  // pick can still be forced), then build the optimal squad around them.
+  const lockedSet = new Set();
+  const lockedIncluded = [];
+  const lockedExcluded = [];
+  for (const id of lockedIds) {
+    const p = scored.find((x) => x.id === id);
+    if (!p) { lockedExcluded.push({ id, reason: 'not found' }); continue; }
+    if (ownedIds.has(id)) continue;
+    const reason = tryAdd(p);
+    if (reason) lockedExcluded.push({ id, name: p.name, reason });
+    else { lockedSet.add(id); lockedIncluded.push(brief(p)); }
   }
 
-  improve(picked, pool, teamCount, budget, () => spend, (v) => { spend = v; }, score);
+  const ranked = [...pool].sort((a, b) => score(b) - score(a));
+  for (const p of ranked) {
+    if (totalSlots() === 0) break;
+    if (ownedIds.has(p.id)) continue;
+    tryAdd(p);
+  }
+
+  improve(picked, pool, teamCount, ownedIds, budget, () => spend, (v) => { spend = v; }, score, lockedSet);
   spend = round(picked.reduce((s, p) => s + p.price, 0));
 
   const startingXI = pickStartingXI(picked);
@@ -127,6 +147,8 @@ export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.rand
     bench: bench.map(brief),
     captain: captain ? brief(captain) : null,
     vice: vice ? brief(vice) : null,
+    lockedIncluded,
+    lockedExcluded,
   };
 }
 
@@ -141,12 +163,12 @@ function squadAvgDifficulty(picked) {
   return diffs.length ? Math.round((diffs.reduce((s, d) => s + d, 0) / diffs.length) * 100) / 100 : null;
 }
 
-function improve(picked, pool, teamCount, budget, getSpend, setSpend, score) {
-  const ownedIds = new Set(picked.map((p) => p.id));
+function improve(picked, pool, teamCount, ownedIds, budget, getSpend, setSpend, score, lockedSet = new Set()) {
   for (let iter = 0; iter < 30; iter += 1) {
     let best = null;
     for (let i = 0; i < picked.length; i += 1) {
       const cur = picked[i];
+      if (lockedSet.has(cur.id)) continue; // never swap out a user-locked player
       const budgetRoom = budget - getSpend() + cur.price;
       const candidates = pool.filter(
         (c) => c.elementType === cur.elementType && !ownedIds.has(c.id) && c.price <= budgetRoom + 1e-9 && score(c) > score(cur)
