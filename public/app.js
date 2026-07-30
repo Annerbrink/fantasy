@@ -489,7 +489,7 @@ function renderDraft(d) {
   const stepper = series.length
     ? `<div class="gw-stepper">
         <button class="ghost gw-nav" id="draft-gw-prev" ${draftGwIndex <= 0 ? 'disabled' : ''} aria-label="Previous gameweek">◀</button>
-        <div class="gw-stepper-label"><strong>GW ${selectedGw}</strong> · <span class="gw-total">${xiGwTotal} pts</span> projected${d.benchBoost ? ' squad' : ' XI'}
+        <div class="gw-stepper-label"><strong>GW ${selectedGw}</strong> · <span class="gw-total">${xiGwTotal} pts</span> projected${selected && selected.benchBoost ? ' squad 🪑 (Bench Boost)' : ' XI'}
           <div class="muted">© ${esc(gwCaptainName)} doubled · GW ${draftGwIndex + 1} of ${series.length} · use ◀ ▶ or arrow keys</div>
         </div>
         <button class="ghost gw-nav" id="draft-gw-next" ${draftGwIndex >= series.length - 1 ? 'disabled' : ''} aria-label="Next gameweek">▶</button>
@@ -503,7 +503,7 @@ function renderDraft(d) {
         <div class="rating-score"><span class="pill ${ratingColor}">${d.rating}/100</span> <strong>${esc(d.grade)}</strong></div>
         <div class="muted">${d.isAlternative ? 'vs the optimal squad’s projection' : 'benchmark squad (100)'} · rated on ${esc(d.objectiveLabel || 'XI + captain')} · avg FDR ${d.ratingBreakdown.avgFixtureDifficulty ?? '—'} · value ${d.ratingBreakdown.value} pts/£m</div>
       </div>
-      ${d.benchBoost ? `<p class="hint">🪑 <strong>Bench Boost mode:</strong> all 15 players score, so the squad is optimised as a whole (not just the XI). The headline counts all 15 + captain.</p>` : ''}
+      ${d.benchBoostGw != null ? `<p class="hint">🪑 <strong>Bench Boost planned for GW${d.benchBoostGw}:</strong> the bench scores on that one week only, so the squad is built with a bench strong enough for it — every other week only your XI counts.</p>` : ''}
       ${lockNote(d)}
       <div class="grid" style="margin-bottom:14px">
         ${statTile('Total cost', money(d.totalCost))}
@@ -711,19 +711,22 @@ async function buildDraft(randomize = false) {
   $('#draft-content').innerHTML = `<div class="card"><p class="empty"><span class="spinner"></span> ${label}</p></div>`;
   const rnd = randomize ? `&randomize=1&seed=${Math.floor(Math.random() * 1e9)}` : '';
   const lock = lockedPlayers.length ? `&lock=${lockedPlayers.map((p) => p.id).join(',')}` : '';
-  // Auto-enable Bench Boost mode when you've planned a Bench Boost within this horizon —
-  // the draft should then value a strong bench, not a cheap 4.0 backup keeper.
+  // Bench Boost values the whole bench on ONE gameweek only — the week from your chip strategy.
+  // Auto-target the planned Bench Boost week when it falls in this horizon; a manual toggle with
+  // no planned week applies it to the first gameweek (the one you'd fire it on now).
   const tgw = latestAdvice?.targetGw || 1;
-  const bbGw = store.chipPlan[`bboost${tgw <= 19 ? 1 : 2}`];
-  const autoBB = Number.isFinite(bbGw) && bbGw >= tgw && bbGw < tgw + parseInt(horizon, 10);
+  const plannedBb = store.chipPlan[`bboost${tgw <= 19 ? 1 : 2}`];
+  const horizonNum = parseInt(horizon, 10);
+  const planInWindow = Number.isFinite(plannedBb) && plannedBb >= tgw && plannedBb < tgw + horizonNum;
   const bbToggle = $('#draft-bb');
-  if (autoBB && bbToggle && !bbToggle.checked) {
+  if (planInWindow && bbToggle && !bbToggle.checked) {
     bbToggle.checked = true;
     const lbl = bbToggle.closest('.switch')?.querySelector('.switch-label');
     if (lbl) lbl.textContent = 'On';
-    toast(`Bench Boost planned GW${bbGw} — building a bench-strong squad`);
+    toast(`Bench Boost planned GW${plannedBb} — building a bench for that week`);
   }
-  const bb = (bbToggle?.checked || autoBB) ? '&bb=1' : '';
+  const bbWeek = planInWindow ? plannedBb : (bbToggle?.checked ? tgw : null);
+  const bb = bbWeek != null ? `&bbGw=${bbWeek}` : '';
   try {
     const res = await fetch(`/api/draft?budget=${encodeURIComponent(budget)}&horizon=${encodeURIComponent(horizon)}${rnd}${lock}${bb}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

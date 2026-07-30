@@ -77,21 +77,31 @@ test('the optimal squad never scores fewer effective points than a locked varian
   const boot = bigBootstrap();
   const scored = scorePlayers(boot, makeFixtures(), 1, 5);
   const anchor = [...scored].sort((a, b) => b.projHorizon - a.projHorizon)[0].id; // the top premium
-  for (const benchBoost of [false, true]) {
-    const optimal = buildBestDraft(scored, { budget: 100, benchBoost });
-    const locked = buildBestDraft(scored, { budget: 100, benchBoost, lockedIds: [anchor] });
+  for (const benchBoostGw of [null, 1]) {
+    const optimal = buildBestDraft(scored, { budget: 100, benchBoostGw });
+    const locked = buildBestDraft(scored, { budget: 100, benchBoostGw, lockedIds: [anchor] });
     assert.ok(typeof optimal.effectiveProjection === 'number', 'effectiveProjection is returned');
     assert.ok(
       optimal.effectiveProjection >= locked.effectiveProjection - 1e-6,
-      `optimal (${optimal.effectiveProjection}) >= locked (${locked.effectiveProjection}) [benchBoost=${benchBoost}]`
+      `optimal (${optimal.effectiveProjection}) >= locked (${locked.effectiveProjection}) [benchBoostGw=${benchBoostGw}]`
     );
   }
+});
+
+test('Bench Boost is applied to only the chosen gameweek', () => {
+  const boot = bigBootstrap();
+  const scored = scorePlayers(boot, makeFixtures(), 1, 5);
+  const d = buildBestDraft(scored, { budget: 100, benchBoostGw: 1 });
+  const bbWeeks = d.pointsByGw.filter((g) => g.benchBoost);
+  assert.equal(bbWeeks.length, 1, 'exactly one Bench Boost gameweek');
+  assert.equal(bbWeeks[0].gw, 1, 'it is the chosen gameweek');
+  assert.equal(d.pointsByGw.find((g) => g.gw === 2).benchBoost, false, 'other weeks are XI-only');
 });
 
 test('effectiveProjection sums the per-GW series and doubles the best starter each week', () => {
   const boot = bigBootstrap();
   const scored = scorePlayers(boot, makeFixtures(), 1, 5);
-  const d = buildBestDraft(scored, { budget: 100, benchBoost: false });
+  const d = buildBestDraft(scored, { budget: 100, benchBoostGw: null });
   const seriesSum = d.pointsByGw.reduce((s, g) => s + g.points, 0);
   assert.ok(Math.abs(d.effectiveProjection - seriesSum) < 0.05, 'effective = sum of per-GW points');
   for (const g of d.pointsByGw) {
@@ -162,16 +172,18 @@ test('at the cheapest keeper price, the reserved backup is a playing keeper (not
   assert.equal(backup.id, cheapGks[0].id, 'the nailed £4.0m keeper is chosen over the 0-minute one');
 });
 
-test('Bench Boost mode does not force the cheapest backup keeper', () => {
-  // Give keepers clearly different projections so BB mode would pick a stronger 2nd GK.
+test('the squad always includes a nailed keeper (prefers a slightly pricier nailed one)', () => {
   const boot = bigBootstrap();
-  // Bump one expensive keeper's projection so BB mode prefers two playing keepers.
-  const scored = scorePlayers(boot, makeFixtures(), 1, 5);
-  const normal = buildBestDraft(scored, { budget: 100, benchBoost: false });
-  const bb = buildBestDraft(scored, { budget: 100, benchBoost: true });
-  const normalGkSpend = normal.squad.GKP.reduce((s, p) => s + p.price, 0);
-  const bbGkSpend = bb.squad.GKP.reduce((s, p) => s + p.price, 0);
-  assert.ok(bbGkSpend >= normalGkSpend, 'Bench Boost mode can spend at least as much on keepers');
+  const scored = scorePlayers(boot, makeFixtures(), 1, 5).map((p) => ({ ...p }));
+  // Make every cheap keeper a non-playing dud except one nailed keeper £0.5m dearer.
+  const gks = scored.filter((p) => p.position === 'GKP').sort((a, b) => a.price - b.price);
+  for (const g of gks) { g.nailed = false; g.projHorizon = 1; g.projNext3 = 0.5; }
+  const nailed = gks[1]; // the second-cheapest becomes the only nailed keeper
+  nailed.nailed = true; nailed.projHorizon = 9; nailed.projNext3 = 6;
+  const draft = buildBestDraft(scored, { budget: 100 });
+  assert.ok(draft.squad.GKP.some((p) => p.nailed), 'at least one nailed keeper is reserved');
+  const backup = draft.squad.GKP.slice().sort((a, b) => a.price - b.price)[0];
+  assert.equal(backup.id, nailed.id, 'the nailed keeper is preferred as the cheap backup');
 });
 
 test('locked players are always included and never swapped out', () => {

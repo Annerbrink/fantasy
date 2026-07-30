@@ -23,12 +23,15 @@ function proj(p) {
 // Per-gameweek projected points for the squad, with the captain applied *each week*: the
 // captain is the highest-projecting starter that gameweek and their points are doubled (that's
 // how the armband works — and it can switch week to week, e.g. across a Double Gameweek). Only
-// the starting XI scores in a normal week; all 15 score under Bench Boost. Returns one entry
-// per GW: { gw, points (incl. captain), base (excl.), captainId, captainPoints }.
-export function squadSeries(startingXI, scorers) {
+// the starting XI scores in a normal week; the bench scores too *only on the one chosen Bench
+// Boost gameweek* (`benchBoostGw`), since the chip fires on a single week. Returns one entry per
+// GW: { gw, points (incl. captain), base (excl.), benchBoost, captainId, captainPoints }.
+export function squadSeries(startingXI, bench = [], benchBoostGw = null) {
   const gws = (startingXI[0]?.pointsByGw || []).map((g) => g.gw);
   const ptOf = (p, gw) => p.pointsByGw?.find((g) => g.gw === gw)?.points || 0;
   return gws.map((gw) => {
+    const isBB = benchBoostGw != null && gw === benchBoostGw;
+    const scorers = isBB ? [...startingXI, ...bench] : startingXI;
     const base = scorers.reduce((s, p) => s + ptOf(p, gw), 0);
     let captainId = null;
     let captainPoints = 0;
@@ -36,17 +39,15 @@ export function squadSeries(startingXI, scorers) {
       const v = ptOf(p, gw);
       if (v > captainPoints) { captainPoints = v; captainId = p.id; }
     }
-    return { gw, points: round(base + captainPoints), base: round(base), captainId, captainPoints: round(captainPoints) };
+    return { gw, points: round(base + captainPoints), base: round(base), benchBoost: isBB, captainId, captainPoints: round(captainPoints) };
   });
 }
 
 // What the squad actually scores over the horizon, and the single objective the optimiser, the
 // rating and the headline all share, so they can never disagree: the per-GW series (which
-// already doubles the best starter each week) summed. Premiums are valued for their captaincy,
-// not just raw points-per-£m across 15.
-export function effectiveProjection(picked, startingXI, { benchBoost = false } = {}) {
-  const scorers = benchBoost ? picked : startingXI;
-  return round(squadSeries(startingXI, scorers).reduce((s, g) => s + g.points, 0));
+// doubles the best starter each week and adds the bench only on the Bench Boost week) summed.
+export function effectiveProjection(startingXI, bench = [], benchBoostGw = null) {
+  return round(squadSeries(startingXI, bench, benchBoostGw).reduce((s, g) => s + g.points, 0));
 }
 function available(p) {
   if (typeof p.chanceNext === 'number') return p.chanceNext > 0;
@@ -68,15 +69,15 @@ export function mulberry32(seed) {
 // Multi-start "optimal": the plain greedy only finds a local optimum, so we also run several
 // jittered restarts and keep the highest-projecting *complete* squad. This is the squad shown
 // as "optimal" and the benchmark the team rating is scored against.
-export function buildBestDraft(scored, { budget = 100.0, attempts = 16, jitter = 0.35, lockedIds = [], benchBoost = false } = {}) {
-  let best = buildDraft(scored, { budget, lockedIds, benchBoost });
+export function buildBestDraft(scored, { budget = 100.0, attempts = 16, jitter = 0.35, lockedIds = [], benchBoostGw = null } = {}) {
+  let best = buildDraft(scored, { budget, lockedIds, benchBoostGw });
   const consider = (candidate) => {
     if (candidate.complete && candidate.effectiveProjection > best.effectiveProjection) best = candidate;
   };
   // Jittered restarts escape the greedy's local optimum.
   for (let i = 1; i <= attempts; i += 1) {
     const seed = (Math.imul(i, 2654435761) ^ 0x9e3779b9) >>> 0;
-    consider(buildDraft(scored, { budget, jitter, rng: mulberry32(seed), lockedIds, benchBoost }));
+    consider(buildDraft(scored, { budget, jitter, rng: mulberry32(seed), lockedIds, benchBoostGw }));
   }
   // Premium-anchored restarts: a pure greedy skips a £15m striker on value grounds, so seed a
   // build around each of the top projectors (that aren't already forced) — the effective
@@ -87,14 +88,15 @@ export function buildBestDraft(scored, { budget = 100.0, attempts = 16, jitter =
     .sort((a, b) => proj(b) - proj(a))
     .slice(0, 6);
   for (const p of premiums) {
-    consider(buildDraft(scored, { budget, lockedIds: [...lockedIds, p.id], benchBoost }));
+    consider(buildDraft(scored, { budget, lockedIds: [...lockedIds, p.id], benchBoostGw }));
   }
   return best;
 }
 
-// benchBoost: when true, the whole bench is valued (all 15 score in a Bench Boost week), so
-// the backup keeper is optimised like a starter rather than forced to the cheapest option.
-export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.random, lockedIds = [], benchBoost = false } = {}) {
+// benchBoostGw: the one gameweek you intend to play Bench Boost on (from the chip strategy). On
+// that week the whole bench scores, so the squad is valued as 15; every other week only the XI
+// scores. Null = no Bench Boost planned in this horizon.
+export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.random, lockedIds = [], benchBoostGw = null } = {}) {
   const pool = scored.filter((p) => available(p) && p.price > 0);
 
   // Perturbed selection score. jitter = 0 → true projection (the optimal squad); jitter > 0
@@ -155,16 +157,18 @@ export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.rand
   }
 
   // Only one keeper plays each week, so the backup GK should be cheap — spend the saved budget
-  // on outfield. But among equally-cheap keepers, prefer one who actually plays (nailed, higher
-  // projection) over a £4.0 bench-warmer who'll never return a point: same price, useful cover
-  // for injuries and Bench Boost. Reserve it here; the starting GK is optimised by the greedy
-  // fill below, and it's protected from the improvement pass so it stays cheap.
-  const cheapestBackupGk = () =>
-    pool
-      .filter((p) => p.elementType === 1 && !ownedIds.has(p.id))
-      .sort((a, b) => a.price - b.price || (b.nailed ? 1 : 0) - (a.nailed ? 1 : 0) || proj(b) - proj(a))[0];
+  // on outfield. But it must be a keeper who actually *plays*: reserve the cheapest nailed
+  // keeper (falling back to the cheapest if none are nailed). That guarantees the squad has at
+  // least one nailed keeper, gives real cover for injuries, and scores on a Bench Boost week —
+  // rather than a £4.0 bench-warmer who never returns a point. Protected from the improvement
+  // pass so it stays cheap; the starting GK is optimised by the greedy fill below.
+  const cheapestBackupGk = () => {
+    const gks = pool.filter((p) => p.elementType === 1 && !ownedIds.has(p.id));
+    const nailedGks = gks.filter((p) => p.nailed);
+    return (nailedGks.length ? nailedGks : gks).sort((a, b) => a.price - b.price || proj(b) - proj(a))[0];
+  };
   let backupGkId = null;
-  if (!benchBoost && need[1] >= 1) {
+  if (need[1] >= 1) {
     const gk = cheapestBackupGk();
     if (gk && tryAdd(gk) === null) backupGkId = gk.id;
   }
@@ -189,14 +193,15 @@ export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.rand
   const vice = [...startingXI].sort((a, b) => proj(b) - proj(a))[1] || null;
 
   const squadProjection = round(picked.reduce((s, p) => s + proj(p), 0));
-  // Per-GW points with the captain doubled each week (the best starter that GW).
-  const series = squadSeries(startingXI, benchBoost ? picked : startingXI);
+  // Per-GW points with the captain doubled each week; the bench counts only on the Bench Boost
+  // gameweek.
+  const series = squadSeries(startingXI, bench, benchBoostGw);
   const effective = round(series.reduce((s, g) => s + g.points, 0));
   const avgFixtureDifficulty = squadAvgDifficulty(picked);
 
   return {
     budget,
-    benchBoost,
+    benchBoostGw,
     totalCost: spend,
     remaining: round(budget - spend),
     complete: picked.length === 15,
