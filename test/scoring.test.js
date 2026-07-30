@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { availabilityFactor, baseExpectation, scorePlayers, topByPosition } from '../src/scoring.js';
+import { availabilityFactor, baseExpectation, scorePlayers, topByPosition, projectByGameweek, sumPointsByGw } from '../src/scoring.js';
 import { makeBootstrap, makeFixtures, makeElement } from './helpers.js';
 
 test('availabilityFactor gates injured and doubtful players', () => {
@@ -26,6 +26,34 @@ test('scorePlayers projects more points for a double gameweek', () => {
   const p1 = scored.find((p) => p.id === 1);
   const p2 = scored.find((p) => p.id === 2);
   assert.ok(p1.projNext > p2.projNext, 'double-gameweek player should out-project the single');
+});
+
+test('projectByGameweek gives per-GW points: double sums two fixtures, blank is zero', () => {
+  // Team 1 doubles in GW1 and blanks in GW2; team 2 plays a single fixture in GW1.
+  const p1 = projectByGameweek(makeElement({ team: 1, ep_next: '5.0' }), makeFixtures(), 1, 3);
+  const p2 = projectByGameweek(makeElement({ team: 2, ep_next: '5.0' }), makeFixtures(), 1, 3);
+  assert.equal(p1.length, 3);
+  assert.equal(p1.find((s) => s.gw === 2).points, 0, 'team 1 blanks GW2 → zero');
+  const dgw = p1.find((s) => s.gw === 1).points;
+  const single = p2.find((s) => s.gw === 1).points;
+  assert.ok(dgw > single, 'a double gameweek out-scores a single for the same base');
+  assert.ok(dgw > 0);
+});
+
+test('sumPointsByGw adds squad members per gameweek', () => {
+  const a = { pointsByGw: [{ gw: 1, points: 4 }, { gw: 2, points: 0 }] };
+  const b = { pointsByGw: [{ gw: 1, points: 3 }, { gw: 2, points: 5 }] };
+  const total = sumPointsByGw([a, b]);
+  assert.deepEqual(total, [{ gw: 1, points: 7 }, { gw: 2, points: 5 }]);
+});
+
+test('scorePlayers attaches per-GW projection and advanced Opta stats', () => {
+  const boot = makeBootstrap([makeElement({ id: 1, expected_goal_involvements_per_90: '0.8', ict_index: '120.0' })]);
+  const scored = scorePlayers(boot, makeFixtures(), 1, 0);
+  const p = scored[0];
+  assert.ok(Array.isArray(p.pointsByGw) && p.pointsByGw.length === 6, 'default 6-GW window');
+  assert.ok(p.advanced && p.advanced.xgi90 === 0.8);
+  assert.equal(p.advanced.ict, 120);
 });
 
 test('topByPosition excludes owned and unavailable players and respects price cap', () => {

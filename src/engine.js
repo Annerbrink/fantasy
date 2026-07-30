@@ -4,7 +4,7 @@
 // from the network layer so it can be unit-tested against captured sample payloads.
 
 import { resolveTargetGw, indexTeams, detectDgwBgw, gameweekAttackIndex, teamFixtureOutlook } from './fdr.js';
-import { scorePlayers } from './scoring.js';
+import { scorePlayers, sumPointsByGw } from './scoring.js';
 import { suggestTransfers, watchlist } from './transfers.js';
 import { pickCaptain } from './captain.js';
 import { chipAdvice } from './chips.js';
@@ -68,6 +68,9 @@ export function buildAdvice(data) {
     : scored;
   const captain = pickCaptain(captainPool.length ? captainPool : scored);
 
+  // Per-gameweek projection for the manager's starting XI (the Dashboard points graph).
+  const projectionByGw = squad && captainPool.length ? sumPointsByGw(captainPool) : null;
+
   // --- Chips --------------------------------------------------------------------------
   const chipsUsed = new Set();
   for (const c of entryHistory?.chips || []) chipsUsed.add(c.name);
@@ -112,6 +115,7 @@ export function buildAdvice(data) {
     // Closed list of current players so the AI coach never invents departed ones.
     keyPlayers: watchlist(scored),
     priceWatch: { risers: trends.risers, fallers: trends.fallers },
+    projectionByGw,
     generatedAt: new Date().toISOString(),
   };
 }

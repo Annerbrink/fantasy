@@ -54,11 +54,38 @@ export function baseExpectation(player) {
   return signals.reduce((s, [v, w]) => s + v * w, 0) / totalW;
 }
 
-// Underlying-numbers nudge: expected goal involvements per 90 reward players who create
-// chances even when their points haven't landed yet. Small, capped bonus.
+// Underlying-numbers nudge: reward players whose Opta-derived stats show they create/
+// prevent chances even when points haven't landed yet. All small and capped — a tie-breaker,
+// not a rewrite of the projection. Uses expected goal involvements, plus a light ICT-index
+// and defensive-contribution touch (the latter matters for the new defensive scoring).
 function underlyingBonus(player) {
   const xgi90 = num(player.expected_goal_involvements_per_90);
-  return Math.min(xgi90 * 0.6, 1.2);
+  const ict = num(player.ict_index); // season ICT (0..~500), normalised small
+  const defCon90 = num(player.defensive_contribution_per_90);
+  const attack = Math.min(xgi90 * 0.6, 1.2);
+  const ictNudge = Math.min(ict / 1500, 0.4); // ~0.4 max for elite ICT
+  const defNudge = Math.min(defCon90 / 30, 0.4); // rewards high-tackle/CBI defenders & mids
+  return attack + ictNudge + defNudge;
+}
+
+// Opta-derived advanced stats carried on each scored row (all free from bootstrap-static).
+function advancedStats(player) {
+  return {
+    xg: num(player.expected_goals),
+    xa: num(player.expected_assists),
+    xgi: num(player.expected_goal_involvements),
+    xg90: num(player.expected_goals_per_90),
+    xa90: num(player.expected_assists_per_90),
+    xgi90: num(player.expected_goal_involvements_per_90),
+    ict: num(player.ict_index),
+    influence: num(player.influence),
+    creativity: num(player.creativity),
+    threat: num(player.threat),
+    defCon: num(player.defensive_contribution),
+    defCon90: num(player.defensive_contribution_per_90),
+    starts: player.starts || 0,
+    minutes: player.minutes || 0,
+  };
 }
 
 // Project a player over a set of upcoming fixtures. Each fixture contributes
@@ -71,6 +98,34 @@ function projectOverFixtures(player, fixtures) {
     total += base * difficultyMultiplier(fx.difficulty, fx.home);
   }
   return total * avail;
+}
+
+// Per-gameweek projection: one point total per GW across the window (a Double Gameweek sums
+// both fixtures, a Blank is 0). Powers the points-over-gameweeks chart.
+export function projectByGameweek(player, fixtures, targetGw, window = 6) {
+  const base = baseExpectation(player) + underlyingBonus(player);
+  const avail = availabilityFactor(player);
+  const fx = teamFixturesFrom(fixtures, player.team, targetGw, window);
+  const out = [];
+  for (let gw = targetGw; gw < targetGw + window; gw += 1) {
+    const inGw = fx.filter((f) => f.gw === gw);
+    const points = inGw.reduce((s, f) => s + base * difficultyMultiplier(f.difficulty, f.home), 0) * avail;
+    out.push({ gw, points: Math.round(points * 100) / 100 });
+  }
+  return out;
+}
+
+// Sum several players' per-gameweek projections into one squad-level series.
+export function sumPointsByGw(players) {
+  const byGw = new Map();
+  for (const p of players) {
+    for (const { gw, points } of p.pointsByGw || []) {
+      byGw.set(gw, (byGw.get(gw) || 0) + points);
+    }
+  }
+  return [...byGw.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([gw, points]) => ({ gw, points: Math.round(points * 100) / 100 }));
 }
 
 // Score every player and return an enriched, sortable list. `fixtures` is the raw FPL
@@ -107,6 +162,10 @@ export function scorePlayers(bootstrap, fixtures, targetGw, horizon = 0) {
       projNext: round(projNext),
       projNext3: round(projNext3),
       projHorizon: round(projHorizon),
+      // Per-gameweek projection for the points graph (draft horizon, else a 6-GW default).
+      pointsByGw: projectByGameweek(p, fixtures, targetGw, horizon > 0 ? horizon : 6),
+      // Opta-derived advanced stats (free from bootstrap-static).
+      advanced: advancedStats(p),
       // Value = projected points over the next 3 GWs per £m — the transfer/watchlist metric.
       value: price > 0 ? round(projNext3 / price) : 0,
       fixturesNext3: next3,

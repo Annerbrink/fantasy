@@ -19,6 +19,7 @@
         <button class="tab" data-tab="captain">Captain &amp; Chips</button>
         <button class="tab" data-tab="rivals">Rivals</button>
         <button class="tab" data-tab="draft">Draft</button>
+        <button class="tab" data-tab="stats">Stats</button>
         <button class="tab" data-tab="setup">Setup</button>
       </nav>
     </div>
@@ -74,6 +75,18 @@
         </div>
       </div>
       <div id="draft-content"></div>
+    </section>
+
+    <!-- Stats -->
+    <section id="tab-stats" class="tab-panel hidden">
+      <div class="card">
+        <h2>Advanced stats</h2>
+        <p class="hint">Opta-derived underlying numbers straight from the FPL API — expected goals/assists, ICT, threat, and defensive contribution. Great for spotting form before the points arrive.</p>
+        <label class="inline-field"><span>Metric</span>
+          <select id="stats-metric"></select>
+        </label>
+      </div>
+      <div id="stats-content"></div>
     </section>
 
     <!-- Setup -->

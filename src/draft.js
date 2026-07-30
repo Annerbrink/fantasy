@@ -12,6 +12,8 @@
 //   - the builder reports the raw squad projection and fixture/value breakdown so callers
 //     can turn it into a 0-100 team rating (see functions/api/draft.js).
 
+import { sumPointsByGw } from './scoring.js';
+
 const SQUAD = { 1: 2, 2: 5, 3: 5, 4: 3 }; // elementType -> count
 const POS_NAME = { 1: 'GKP', 2: 'DEF', 3: 'MID', 4: 'FWD' };
 const MAX_PER_TEAM = 3;
@@ -116,6 +118,8 @@ export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.rand
     projectedPoints: round(startingXI.reduce((s, p) => s + proj(p), 0)),
     squadProjection,
     avgFixtureDifficulty,
+    // Per-gameweek projected points for the starting XI (the points graph).
+    pointsByGw: sumPointsByGw(startingXI),
     value: spend > 0 ? round(squadProjection / spend) : 0,
     formation: formationOf(startingXI),
     squad: groupByPosition(picked),

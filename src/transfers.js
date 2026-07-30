@@ -136,6 +136,7 @@ function brief(p) {
     onPens: p.onPens,
     selectedBy: p.selectedBy,
     priceTrend: p.priceTrend || null,
+    xgi90: p.advanced?.xgi90 ?? null,
   };
 }
 

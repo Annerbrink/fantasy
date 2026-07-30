@@ -14,7 +14,7 @@ goes through Cloudflare Pages Functions, which also run the scoring engine — s
 computed numbers feed both the UI and the AI coach, and the API key stays server-side.
 
 ```
-public/            Static single-page app (Dashboard / Transfers / Captain & Chips / Rivals / Setup)
+public/            Static single-page app (Dashboard / Transfers / Captain & Chips / Rivals / Draft / Stats / Setup)
 functions/
   _middleware.js   Security headers + JSON error handling
   api/

@@ -50,6 +50,43 @@ function gainPill(net) {
   return `<span class="pill ${cls}">${sign}${net} pts</span>`;
 }
 
+// Inline-SVG bar chart of projected points per gameweek. Returns an HTML string (the app
+// renders via innerHTML). Doubles are highlighted, blanks shown as faint gaps. Self-contained
+// — no chart library — so it works within the Pages CSP.
+function pointsChart(series, { heading, subtitle } = {}) {
+  if (!series || !series.length) return '';
+  const n = series.length;
+  const max = Math.max(1, ...series.map((s) => s.points));
+  const barW = 34, gap = 12, padL = 8, padT = 20, padB = 26, h = 160;
+  const innerH = h - padT - padB;
+  const w = padL * 2 + n * barW + (n - 1) * gap;
+  const total = Math.round(series.reduce((s, p) => s + p.points, 0) * 10) / 10;
+
+  const bars = series.map((s, i) => {
+    const bh = Math.max(1, Math.round((s.points / max) * innerH));
+    const x = padL + i * (barW + gap);
+    const y = padT + (innerH - bh);
+    const cls = s.points <= 0.01 ? 'blank' : s.points > max * 0.66 ? 'dgw' : '';
+    return `<g>
+      <title>GW${s.gw}: ${s.points} pts</title>
+      <rect class="bar ${cls}" x="${x}" y="${y}" width="${barW}" height="${bh}" rx="3"></rect>
+      <text class="bar-val" x="${x + barW / 2}" y="${y - 4}" text-anchor="middle">${s.points}</text>
+      <text class="bar-lbl" x="${x + barW / 2}" y="${h - 8}" text-anchor="middle">GW${s.gw}</text>
+    </g>`;
+  }).join('');
+
+  return `<div class="card">
+    ${heading ? `<h2>${esc(heading)} <span class="gw">· ${total} pts total</span></h2>` : ''}
+    ${subtitle ? `<p class="hint">${esc(subtitle)}</p>` : ''}
+    <div class="chart-scroll"><svg class="pts-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Projected points per gameweek" preserveAspectRatio="xMinYMid meet">${bars}</svg></div>
+    <div class="chart-legend">
+      <span class="key"><span class="swatch" style="background:var(--pl-green)"></span> strong week</span>
+      <span class="key"><span class="swatch" style="background:var(--pl-magenta)"></span> normal</span>
+      <span class="key"><span class="swatch" style="background:var(--border)"></span> blank</span>
+    </div>
+  </div>`;
+}
+
 // ---- Renderers ----------------------------------------------------------------------
 function renderDashboard(a) {
   const m = a.manager;
@@ -77,7 +114,10 @@ function renderDashboard(a) {
         ? `<div class="move">Transfer <span class="pill neg">OUT</span> ${playerCell(topMove.out)} <span class="arrow">→</span> <span class="pill pos">IN</span> ${playerCell(topMove.in)} ${gainPill(topMove.netGain)}</div>`
         : `<p class="muted">${a.transfers?.hold ? 'Hold — no transfer beats your current squad this week.' : 'Set your Team ID in Setup for personalised transfer advice.'}</p>`}
       ${cap ? `<p style="margin-top:12px">Captain: <strong class="cap-c">© ${esc(cap.name)}</strong> (${esc(cap.team)})${a.captain.vice ? ` · Vice: ${esc(a.captain.vice.name)}` : ''}</p>` : ''}
-    </div>`;
+    </div>
+    ${a.projectionByGw
+      ? pointsChart(a.projectionByGw, { heading: 'Your projected points', subtitle: 'Starting XI projection across the upcoming gameweeks.' })
+      : '<div class="card"><p class="muted">Set your Team ID in Setup to see your team\'s projected points per gameweek.</p></div>'}`;
 }
 
 function renderTransfers(a) {
@@ -89,9 +129,9 @@ function renderTransfers(a) {
       <div class="card">
         <h2>${pos} watchlist</h2>
         <div class="table-scroll"><table>
-          <thead><tr><th>Player</th><th class="num">Proj (3GW)</th><th class="num">Value</th><th class="num">Owned</th></tr></thead>
+          <thead><tr><th>Player</th><th class="num">Proj (3GW)</th><th class="num">xGI/90</th><th class="num">Value</th><th class="num">Owned</th></tr></thead>
           <tbody>${players.map((p) => `<tr>
-            <td>${playerCell(p)}</td><td class="num">${p.projNext3}</td><td class="num">${p.value}</td><td class="num">${p.selectedBy}%</td>
+            <td>${playerCell(p)}</td><td class="num">${p.projNext3}</td><td class="num">${p.xgi90 != null ? p.xgi90.toFixed(2) : '—'}</td><td class="num">${p.value}</td><td class="num">${p.selectedBy}%</td>
           </tr>`).join('')}</tbody>
         </table></div>
       </div>`).join('');
@@ -286,7 +326,8 @@ function renderDraft(d) {
       ${posRow('Forwards', xiByPos('FWD'))}
       <p class="hint" style="margin-top:14px">Bench:</p>
       <div class="pitch-row">${d.bench.map((p) => playerChip(p, { bench: true })).join('')}</div>
-    </div>`;
+    </div>
+    ${pointsChart(d.pointsByGw, { heading: 'Squad projected points', subtitle: 'Starting XI projection per gameweek over your chosen horizon.' })}`;
 }
 
 async function buildDraft(randomize = false) {
@@ -309,6 +350,49 @@ $('#draft-random').addEventListener('click', () => buildDraft(true));
 let draftLoaded = false;
 document.querySelector('.tab[data-tab="draft"]').addEventListener('click', () => {
   if (!draftLoaded) { draftLoaded = true; buildDraft(false); }
+});
+
+// ---- Stats (advanced Opta-derived metrics) ------------------------------------------
+let statsMetricsLoaded = false;
+async function loadStats(metric) {
+  const content = $('#stats-content');
+  content.innerHTML = `<div class="card"><p class="empty"><span class="spinner"></span> Loading stats…</p></div>`;
+  try {
+    const q = metric ? `?metric=${encodeURIComponent(metric)}` : '';
+    const data = await (await fetch(`/api/stats${q}`)).json();
+    if (data.error) throw new Error(data.error);
+
+    // Populate the metric dropdown once.
+    const sel = $('#stats-metric');
+    if (!statsMetricsLoaded && data.metrics) {
+      sel.innerHTML = data.metrics.map((m) => `<option value="${m.key}">${esc(m.label)}</option>`).join('');
+      sel.value = data.metric;
+      statsMetricsLoaded = true;
+    }
+
+    const rows = data.leaders.map((p, i) => `<tr>
+      <td class="num">${i + 1}</td>
+      <td><strong>${esc(p.name)}</strong> <small class="muted">${esc(p.team)} · ${esc(p.position)}</small></td>
+      <td class="num">${money(p.price)}</td>
+      <td class="num"><strong>${p.value}</strong></td>
+      <td class="num muted">${(p.minutes || 0).toLocaleString()}'</td>
+    </tr>`).join('');
+
+    content.innerHTML = `<div class="card">
+      <h2>${esc(data.label)} — top players</h2>
+      <div class="table-scroll"><table>
+        <thead><tr><th class="num">#</th><th>Player</th><th class="num">Price</th><th class="num">${esc(data.label)}</th><th class="num">Mins</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </div>`;
+  } catch (e) {
+    content.innerHTML = `<div class="card"><div class="error-box">Couldn't load stats: ${esc(e.message)}</div></div>`;
+  }
+}
+$('#stats-metric').addEventListener('change', (e) => loadStats(e.target.value));
+let statsLoaded = false;
+document.querySelector('.tab[data-tab="stats"]').addEventListener('click', () => {
+  if (!statsLoaded) { statsLoaded = true; loadStats(); }
 });
 
 // ---- AI usage badge -----------------------------------------------------------------
