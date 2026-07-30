@@ -18,3 +18,11 @@ directory = "./public"
 
 [ai]
 binding = "AI"
+
+# Optional: in-app AI usage counter. Bind a KV namespace named USAGE and the /api/usage
+# endpoint will show today's calls + tokens in the app's AI panel. Create it in the
+# dashboard (Pages -> Settings -> Functions -> Bindings -> KV namespace -> name it USAGE),
+# or uncomment below after `npx wrangler kv namespace create USAGE` and paste the id.
+# [[kv_namespaces]]
+# binding = "USAGE"
+# id = "<your-kv-namespace-id>"

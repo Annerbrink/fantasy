@@ -183,6 +183,22 @@ function renderRivals(a) {
 
 function emptyCard(msg) { return `<div class="card"><p class="empty">${esc(msg)}</p></div>`; }
 
+// ---- AI usage badge -----------------------------------------------------------------
+async function refreshUsage() {
+  const badge = $('#usage-badge');
+  try {
+    const u = await (await fetch('/api/usage')).json();
+    if (!u.enabled) return badge.classList.add('hidden');
+    const neuron = u.neuronsEstimate != null
+      ? ` · ~<b>${u.neuronsEstimate.toLocaleString()}</b>/${u.freeNeuronsPerDay.toLocaleString()} Neurons`
+      : ` · free tier: ${u.freeNeuronsPerDay.toLocaleString()} Neurons/day`;
+    badge.innerHTML = `📊 AI today: <b>${u.calls}</b> plan${u.calls === 1 ? '' : 's'} · <b>${(u.totalTokens || 0).toLocaleString()}</b> tokens${neuron} · resets ${u.resetsAt}`;
+    badge.classList.remove('hidden');
+  } catch {
+    badge.classList.add('hidden');
+  }
+}
+
 // ---- Minimal markdown for the AI panel ----------------------------------------------
 function renderMarkdown(md) {
   let html = esc(md);
@@ -234,6 +250,7 @@ async function load() {
     } else {
       $('#ai-body').innerHTML = renderMarkdown(data.text);
     }
+    refreshUsage();
   } catch {
     $('#ai-card').classList.add('hidden');
   }

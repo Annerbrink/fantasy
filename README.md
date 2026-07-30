@@ -68,10 +68,17 @@ Then open the app, go to **Setup**, enter your Team ID and League ID, and browse
      it takes priority over Workers AI. Optionally set `ANTHROPIC_MODEL` (defaults to
      `claude-opus-5`).
 
-3. **Add your custom domain**: **Pages → your project → Custom domains → Set up a domain**,
+3. **In-app AI usage counter** (optional). Bind a KV namespace named `USAGE` and the AI
+   panel shows today's calls + tokens against the free daily allowance. In the dashboard:
+   **Pages → Settings → Functions → Bindings → KV namespace → name it `USAGE`** (create a
+   new namespace when prompted). Cloudflare's **AI → Workers AI** dashboard remains the
+   source of truth for billed Neurons; this is a convenience readout. (Optionally set
+   `NEURONS_PER_1K_TOKENS` to show a rough Neuron estimate too.)
+
+4. **Add your custom domain**: **Pages → your project → Custom domains → Set up a domain**,
    and enter `fantasy.totteannerbrink.com`.
 
-4. **Point the CNAME at your web hotel's DNS**: create a `CNAME` record
+5. **Point the CNAME at your web hotel's DNS**: create a `CNAME` record
    `fantasy` → `fpl-assistant.pages.dev` (Cloudflare shows the exact target). Cloudflare
    provisions the TLS certificate automatically once the record resolves.
 

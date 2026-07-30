@@ -7,8 +7,12 @@
 //      your Cloudflare account, no key or billing required.
 // Graceful fallback: if neither is available it returns { disabled: true } and the UI
 // simply hides the AI panel — the algorithmic advice still works fully without it.
+//
+// Token usage per call is recorded (best-effort) in the optional `USAGE` KV namespace so
+// the app can show a running daily total. See functions/api/usage.js.
 
 import { buildCoachMessages } from '../../src/coach-prompt.js';
+import { recordUsage } from './_usage.js';
 
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), {
@@ -34,8 +38,14 @@ export async function onRequestPost({ request, env }) {
   const { system, user } = buildCoachMessages(advice);
 
   try {
-    if (hasClaude) return json(await coachWithClaude(env, system, user));
-    return json(await coachWithWorkersAI(env, system, user));
+    const result = hasClaude
+      ? await coachWithClaude(env, system, user)
+      : await coachWithWorkersAI(env, system, user);
+
+    // Best-effort usage accounting — never let it fail the response.
+    const usage = await recordUsage(env, result.provider, result.usage).catch(() => null);
+
+    return json({ text: result.text, model: result.model, provider: result.provider, usage });
   } catch (err) {
     return json({ error: 'Coach request failed', detail: String(err?.message || err).slice(0, 300) }, 502);
   }
@@ -52,7 +62,17 @@ async function coachWithWorkersAI(env, system, user) {
     max_tokens: 900,
   });
   const text = (result?.response || '').trim();
-  return { text, model };
+  const u = result?.usage || {};
+  return {
+    text,
+    model,
+    provider: 'workers-ai',
+    usage: {
+      inputTokens: u.prompt_tokens ?? null,
+      outputTokens: u.completion_tokens ?? null,
+      totalTokens: u.total_tokens ?? null,
+    },
+  };
 }
 
 // --- Anthropic Claude (if a key is configured) ----------------------------------------
@@ -80,12 +100,22 @@ async function coachWithClaude(env, system, user) {
 
   const payload = await res.json();
   if (payload.stop_reason === 'refusal') {
-    return { text: 'The AI coach declined to answer this request.' };
+    return { text: 'The AI coach declined to answer this request.', model: payload.model, provider: 'claude', usage: {} };
   }
   const text = (payload.content || [])
     .filter((b) => b.type === 'text')
     .map((b) => b.text)
     .join('\n')
     .trim();
-  return { text, model: payload.model };
+  const u = payload.usage || {};
+  return {
+    text,
+    model: payload.model,
+    provider: 'claude',
+    usage: {
+      inputTokens: u.input_tokens ?? null,
+      outputTokens: u.output_tokens ?? null,
+      totalTokens: u.input_tokens != null ? (u.input_tokens + (u.output_tokens || 0)) : null,
+    },
+  };
 }

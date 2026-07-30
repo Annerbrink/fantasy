@@ -125,6 +125,11 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .ai-panel { border-left: 3px solid var(--pl-magenta); }
 .ai-panel .ai-body { white-space: pre-wrap; font-size: .93rem; }
 .ai-panel .ai-body h1, .ai-panel .ai-body h2, .ai-panel .ai-body h3 { font-size: 1rem; margin: 10px 0 4px; }
+.usage-badge {
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);
+  font-size: .78rem; color: var(--text-dim);
+}
+.usage-badge b { color: var(--text); font-variant-numeric: tabular-nums; }
 
 label.field { display: block; margin-bottom: 14px; }
 label.field span { display: block; font-weight: 600; margin-bottom: 4px; font-size: .9rem; }
