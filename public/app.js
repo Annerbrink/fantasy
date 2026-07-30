@@ -358,6 +358,11 @@ async function loadPlayers() {
   } catch { /* search just won't autocomplete */ }
 }
 
+const LOCKS_KEY = 'fpl_locks';
+function saveLocks() {
+  try { localStorage.setItem(LOCKS_KEY, JSON.stringify(lockedPlayers)); } catch { /* storage full/blocked */ }
+}
+
 function renderLockedChips() {
   $('#locked-chips').innerHTML = lockedPlayers
     .map((p, i) => `<span class="locked-chip">${esc(p.name)} <small class="muted">${esc(p.team)}</small><button data-i="${i}" title="Remove">×</button></span>`)
@@ -365,7 +370,15 @@ function renderLockedChips() {
   document.querySelectorAll('#locked-chips button').forEach((b) =>
     b.addEventListener('click', () => { lockedPlayers.splice(Number(b.dataset.i), 1); renderLockedChips(); })
   );
+  saveLocks(); // persist after every add / remove / load so locks survive a refresh
 }
+
+// Restore locked players saved from a previous session.
+try {
+  const saved = JSON.parse(localStorage.getItem(LOCKS_KEY) || '[]');
+  if (Array.isArray(saved)) { for (const p of saved) if (p && p.id != null) lockedPlayers.push(p); }
+} catch { /* ignore corrupt storage */ }
+renderLockedChips();
 
 // Toast for feedback when locking from other tabs.
 function toast(msg) {
@@ -401,6 +414,7 @@ function addLock() {
   $('#lock-input').value = '';
 }
 $('#lock-add').addEventListener('click', addLock);
+$('#lock-clear')?.addEventListener('click', () => { lockedPlayers.length = 0; renderLockedChips(); });
 
 // Lock straight from any table row that carries a .mini-lock button (Stats / Transfers).
 document.addEventListener('click', (e) => {
