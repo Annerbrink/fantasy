@@ -24,7 +24,7 @@ function halfDeadline(targetGw) {
 
 // `chipsUsed` is the set of chip keys already played this half-season (from entry history).
 // `dgwBgw` is the report from detectDgwBgw(). `teamById` maps team id -> short name.
-export function chipAdvice({ chipsUsed = new Set(), dgwBgw = [], attackGws = [], teamById = new Map(), targetGw }) {
+export function chipAdvice({ chipsUsed = new Set(), dgwBgw = [], attackGws = [], tripleCaptain = null, teamById = new Map(), targetGw }) {
   const expiryGw = halfDeadline(targetGw);
   const remaining = expiryGw - targetGw; // gameweeks left to use this half's chips
 
@@ -32,6 +32,7 @@ export function chipAdvice({ chipsUsed = new Set(), dgwBgw = [], attackGws = [],
   const doubles = dgwBgw.filter((r) => r.doubleTeams.length > 0 && r.gw <= expiryGw);
   const blanks = dgwBgw.filter((r) => r.blankTeams.length > 0 && r.gw <= expiryGw);
   const peakAttack = [...attackGws].filter((g) => g.gw <= expiryGw).sort((a, b) => b.index - a.index)[0] || null;
+  const tc = tripleCaptain && tripleCaptain.gw <= expiryGw ? tripleCaptain : null;
 
   const advice = [];
   for (const chip of ALL_CHIPS) {
@@ -39,7 +40,7 @@ export function chipAdvice({ chipsUsed = new Set(), dgwBgw = [], attackGws = [],
       advice.push({ chip: chip.name, status: 'used', recommendation: 'Already played this half-season.' });
       continue;
     }
-    advice.push(recommendFor(chip, { doubles, blanks, peakAttack, targetGw, expiryGw, remaining }));
+    advice.push(recommendFor(chip, { doubles, blanks, peakAttack, tc, targetGw, expiryGw, remaining }));
   }
   return advice;
 }
@@ -53,11 +54,13 @@ function expiringSoon(remaining) {
   return remaining <= 4;
 }
 
-function recommendFor(chip, { doubles, blanks, peakAttack, targetGw, expiryGw, remaining }) {
+function recommendFor(chip, { doubles, blanks, peakAttack, tc, targetGw, expiryGw, remaining }) {
   const biggestDouble = [...doubles].sort((a, b) => b.doubleTeams.length - a.doubleTeams.length)[0];
   const firstDouble = doubles[0];
   const firstBlank = blanks[0];
   const expiryNote = ` (this chip expires at the GW${expiryGw} deadline)`;
+  const tcVenue = tc ? (tc.home ? `at home to ${tc.opponent}` : `away at ${tc.opponent}`) : '';
+  const tcWhy = tc && tc.promoted ? ` — a newly-promoted/weak side` : tc ? ` — his easiest fixture` : '';
 
   switch (chip.key) {
     case 'bboost':
@@ -74,7 +77,14 @@ function recommendFor(chip, { doubles, blanks, peakAttack, targetGw, expiryGw, r
 
     case '3xc':
       if (biggestDouble) {
-        return target(chip, biggestDouble.gw, `Best on a premium captain (e.g. a nailed forward) with two fixtures in GW${biggestDouble.gw} — you triple both matches.`);
+        const who = tc ? `${tc.name}` : 'a nailed premium';
+        return target(chip, biggestDouble.gw, `Best in the GW${biggestDouble.gw} Double — triple ${who} across both fixtures.`);
+      }
+      // No double in the window: name the concrete best week for your premium captain.
+      if (tc) {
+        const status = expiringSoon(remaining) ? urgent : target;
+        const tail = expiringSoon(remaining) ? ` Don't hold past GW${expiryGw}${expiryNote}.` : '';
+        return status(chip, tc.gw, `Triple ${tc.name} in GW${tc.gw} ${tcVenue}${tcWhy} (proj ${tc.points ?? '—'} pts). Best single-fixture week to triple your premium.${tail}`);
       }
       if (expiringSoon(remaining) && peakAttack) {
         return urgent(chip, peakAttack.gw, `No double before it expires — triple your best nailed premium in GW${peakAttack.gw} (${topFixtureNames(peakAttack)}) rather than lose the chip at GW${expiryGw}${expiryNote}.`);

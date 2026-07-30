@@ -229,6 +229,7 @@ function renderCaptain(a) {
         <div class="captain-box"><div class="role">Vice</div><div class="name">${esc(c.vice.name)}</div><div class="muted">${esc(c.vice.team)}</div></div>
         ${c.differential ? `<div class="captain-box"><div class="role">Differential</div><div class="name">${esc(c.differential.name)}</div><div class="muted">${c.differential.selectedBy}% owned</div></div>` : ''}
       </div>
+      ${a.tripleCaptain ? `<p class="hint" style="margin-top:12px">🔺 <strong>Triple Captain target:</strong> ${esc(a.tripleCaptain.name)} in <strong>GW${a.tripleCaptain.gw}</strong> ${a.tripleCaptain.home ? 'at home to' : 'away at'} ${esc(a.tripleCaptain.opponent)}${a.tripleCaptain.promoted ? ' (newly-promoted/weak side)' : ''} — proj ${a.tripleCaptain.points ?? '—'} pts.</p>` : ''}
     </div>` : '';
 
   const chips = (a.chips || []).map((ch) => `
@@ -647,7 +648,6 @@ async function load() {
   if (store.leagueId) params.set('leagueId', store.leagueId);
 
   $('#dash-content').innerHTML = `<div class="card"><p class="empty"><span class="spinner"></span> Loading your gameweek…</p></div>`;
-  $('#ai-body').innerHTML = `<span class="spinner"></span> <span class="muted">Waking the coach…</span>`;
 
   let advice;
   try {
@@ -656,11 +656,14 @@ async function load() {
     advice = await res.json();
   } catch (e) {
     $('#dash-content').innerHTML = `<div class="card"><div class="error-box">Couldn't load FPL data: ${esc(e.message)}. Check your Team/League IDs in Setup.</div></div>`;
-    $('#ai-card').classList.add('hidden');
     return;
   }
 
   if (advice.leagueName) league.textContent = `${advice.leagueName} — your edge to climb the table.`;
+
+  // Stash the advice so the AI coach can be generated on demand (it never auto-runs).
+  latestAdvice = advice;
+  resetCoach();
 
   renderDashboard(advice);
   renderTransfers(advice);
@@ -668,31 +671,53 @@ async function load() {
   renderRivals(advice);
   loadPlan();
   loadAccuracy();
+}
 
-  // AI coach — best-effort, hides itself if no API key is configured.
+// Latest recommendations payload, fed to the AI coach when the user asks for a plan.
+let latestAdvice = null;
+
+// Return the coach panel to its "press to generate" idle state after each fresh load.
+function resetCoach() {
+  const btn = $('#ai-run');
+  if (btn) btn.disabled = false;
+  $('#ai-body').innerHTML = `<span class="muted">Press <strong>Generate game plan</strong> for a written weekly plan from the numbers on this page.</span>`;
+}
+
+// AI coach — user-triggered only. Best-effort; shows a setup hint if no provider is wired up.
+async function loadCoach() {
+  if (!latestAdvice) {
+    $('#ai-body').innerHTML = `<span class="muted">Load your gameweek first, then generate a plan.</span>`;
+    return;
+  }
+  const btn = $('#ai-run');
+  if (btn) btn.disabled = true;
+  $('#ai-body').innerHTML = `<span class="spinner"></span> <span class="muted">Waking the coach…</span>`;
   try {
     const res = await fetch('/api/coach', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(advice),
+      body: JSON.stringify(latestAdvice),
     });
     const data = await res.json();
     if (data.disabled) {
-      // No provider wired up — show a short hint instead of hiding silently, so it's clear
-      // this is a setup step (add the Workers AI `AI` binding), not an app error.
-      $('#ai-card').classList.remove('hidden');
+      // No provider wired up — show a short hint so it's clear this is a setup step
+      // (add the Workers AI `AI` binding), not an app error.
       $('#ai-body').innerHTML = `<span class="muted">AI coach is off — add a Workers AI binding named <code>AI</code> (or an ANTHROPIC_API_KEY) in Cloudflare, then redeploy. Check <a href="/api/health" target="_blank">/api/health</a> to confirm the binding.</span>`;
-    } else if (!data.text && !data.error) {
-      $('#ai-card').classList.add('hidden');
     } else if (data.error) {
       $('#ai-body').innerHTML = `<div class="error-box">AI coach error: ${esc(data.detail || data.error)}</div>`;
+    } else if (!data.text) {
+      $('#ai-body').innerHTML = `<span class="muted">No plan came back — try again.</span>`;
     } else {
       $('#ai-body').innerHTML = renderMarkdown(data.text);
     }
     refreshUsage();
-  } catch {
-    $('#ai-card').classList.add('hidden');
+  } catch (e) {
+    $('#ai-body').innerHTML = `<div class="error-box">AI coach error: ${esc(e.message)}</div>`;
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
+
+$('#ai-run')?.addEventListener('click', loadCoach);
 
 load();

@@ -30,9 +30,12 @@
     <section id="tab-dashboard" class="tab-panel">
       <div id="dash-content"></div>
       <div class="card ai-panel" id="ai-card">
-        <h2>🧠 AI Coach</h2>
-        <p class="hint">A weekly game plan written from the numbers below.</p>
-        <div class="ai-body" id="ai-body"><span class="spinner"></span> <span class="muted">Thinking…</span></div>
+        <div class="ai-head">
+          <h2>🧠 AI Coach</h2>
+          <button class="primary" id="ai-run">Generate game plan</button>
+        </div>
+        <p class="hint">A weekly game plan written from the numbers below. Click to generate — it won't run on its own.</p>
+        <div class="ai-body" id="ai-body"><span class="muted">Press <strong>Generate game plan</strong> for a written weekly plan from the numbers on this page.</span></div>
         <div class="usage-badge hidden" id="usage-badge"></div>
       </div>
     </section>
