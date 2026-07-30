@@ -103,6 +103,20 @@ test('Triple Captain triples the captain on only the chosen gameweek', () => {
   assert.ok(tc.effectiveProjection > plain.effectiveProjection - 1e-6, 'Triple Captain adds points');
 });
 
+test('a Bench Boost draft still builds a full, legal squad on a tight budget', () => {
+  const boot = bigBootstrap();
+  const scored = scorePlayers(boot, makeFixtures(), 1, 5);
+  for (const budget of [92, 95, 100]) {
+    const d = buildBestDraft(scored, { budget, benchBoostGw: 1 });
+    const all = [...d.startingXI, ...d.bench];
+    assert.equal(all.length, 15, `full squad at £${budget}m under Bench Boost`);
+    assert.ok(d.totalCost <= budget + 1e-6, 'within budget');
+    const byTeam = {};
+    for (const p of all) byTeam[p.teamId] = (byTeam[p.teamId] || 0) + 1;
+    assert.ok(Math.max(...Object.values(byTeam)) <= 3, 'max 3 per club');
+  }
+});
+
 test('Bench Boost mode excludes non-playing players so the bench actually scores', () => {
   const boot = bigBootstrap();
   const scored = scorePlayers(boot, makeFixtures(), 1, 5).map((p) => ({ ...p }));

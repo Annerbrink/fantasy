@@ -140,14 +140,31 @@ export function buildBestDraft(scored, { budget = 100.0, attempts = 16, jitter =
 
 // benchBoostGw: the one gameweek you intend to play Bench Boost on (from the chip strategy). On
 // that week the whole bench scores, so the squad is valued as 15; every other week only the XI
-// scores. Null = no Bench Boost planned in this horizon.
-export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.random, lockedIds = [], benchBoostGw = null, tripleCaptainGw = null } = {}) {
+// scores. Null = no Bench Boost planned in this horizon. Restricting a Bench Boost squad to
+// playing players can, on tight budgets, leave the greedy short of a legal 15 — so we retry
+// without that restriction rather than fail to build.
+export function buildDraft(scored, opts = {}) {
+  const d = assemble(scored, opts);
+  if (opts.benchBoostGw != null && !d.complete) return assemble(scored, { ...opts, strictPlaying: false });
+  return d;
+}
+
+function assemble(scored, { budget = 100.0, jitter = 0, rng = Math.random, lockedIds = [], benchBoostGw = null, tripleCaptainGw = null, strictPlaying = true } = {}) {
   // In Bench Boost mode all 15 score that week, so a non-playing bench is a wasted chip —
-  // restrict the pool to players who actually feature (nailed, or with real minutes). Otherwise
-  // the cheapest way to fill a slot is a £4.0-4.5m academy player who never plays.
+  // prefer players who actually feature (nailed, or with real minutes). Otherwise the cheapest
+  // way to fill a slot is a £4.0-4.5m academy player who never plays. Applied only when it still
+  // leaves a comfortable squad in every position, so sparse minutes data (early season) can
+  // never empty the pool and block the build.
   const PLAYS_MINUTES = 300;
   const plays = (p) => p.nailed || (p.minutes || 0) >= PLAYS_MINUTES;
-  const pool = scored.filter((p) => available(p) && p.price > 0 && (benchBoostGw == null || plays(p)));
+  let pool = scored.filter((p) => available(p) && p.price > 0);
+  if (benchBoostGw != null && strictPlaying) {
+    const filtered = pool.filter(plays);
+    const enough = Object.entries(SQUAD).every(
+      ([et, n]) => filtered.filter((p) => p.elementType === Number(et)).length >= n + 3
+    );
+    if (enough) pool = filtered;
+  }
 
   // Perturbed selection score. jitter = 0 → true projection (the optimal squad); jitter > 0
   // → each player's rank is nudged by up to ±jitter, producing a plausible alternative.
@@ -230,6 +247,36 @@ export function buildDraft(scored, { budget = 100.0, jitter = 0, rng = Math.rand
     if (totalSlots() === 0) break;
     if (ownedIds.has(p.id)) continue;
     tryAdd(p);
+  }
+
+  // Repair: the budget-reserve greedy can strand a slot when its per-position minimum ignores
+  // club limits (the cheapest option is 3-per-club blocked). Fill any open slots with the best
+  // affordable club-legal player, downgrading the priciest non-protected pick when short of cash.
+  const forceAdd = (p) => {
+    picked.push(p); ownedIds.add(p.id); need[p.elementType] -= 1;
+    spend = round(spend + p.price); teamCount.set(p.teamId, (teamCount.get(p.teamId) || 0) + 1);
+  };
+  const removePick = (p) => {
+    picked.splice(picked.indexOf(p), 1); ownedIds.delete(p.id); need[p.elementType] += 1;
+    spend = round(spend - p.price); teamCount.set(p.teamId, (teamCount.get(p.teamId) || 0) - 1);
+  };
+  for (let guard = 0; totalSlots() > 0 && guard < 80; guard += 1) {
+    const openEt = Number(Object.keys(need).find((et) => need[et] > 0));
+    const budgetLeft = round(budget - spend);
+    const affordableForSlot = pool.filter((c) => c.elementType === openEt && !ownedIds.has(c.id) && c.price <= budgetLeft + 1e-9);
+    const cand = affordableForSlot
+      .filter((c) => (teamCount.get(c.teamId) || 0) < MAX_PER_TEAM)
+      .sort((a, b) => score(b) - score(a) || a.price - b.price)[0];
+    if (cand) { forceAdd(cand); continue; }
+    // No club-legal candidate: prefer to sell a non-protected pick from a club that is blocking
+    // an affordable candidate for this slot (frees a club slot); otherwise sell the priciest to
+    // free budget.
+    const blockingClubs = new Set(affordableForSlot.map((c) => c.teamId));
+    const nonProtected = picked.filter((p) => !protectedIds.has(p.id));
+    const sell = nonProtected.filter((p) => blockingClubs.has(p.teamId)).sort((a, b) => b.price - a.price)[0]
+      || nonProtected.sort((a, b) => b.price - a.price)[0];
+    if (!sell) break; // nothing left to downgrade — genuinely infeasible
+    removePick(sell);
   }
 
   improve(picked, pool, teamCount, ownedIds, budget, () => spend, (v) => { spend = v; }, score, protectedIds);
