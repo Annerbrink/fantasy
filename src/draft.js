@@ -410,6 +410,8 @@ function brief(p) {
     nailed: p.nailed || false,
     // Per-gameweek projection so the Draft tab can step through GWs (a DGW is summed, a BGW 0).
     pointsByGw: p.pointsByGw || [],
+    // Next few fixtures (opponent, home/away, difficulty) for the card ticker.
+    upcoming: (p.upcoming || []).slice(0, 4),
   };
 }
 

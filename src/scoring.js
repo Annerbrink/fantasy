@@ -211,6 +211,13 @@ export function scorePlayers(bootstrap, fixtures, targetGw, horizon = 0) {
       // Value = projected points over the next 3 GWs per £m — the transfer/watchlist metric.
       value: price > 0 ? round(projNext3 / price) : 0,
       fixturesNext3: next3,
+      // Compact next-fixtures ticker for the draft cards: opponent short name, home/away, FDR.
+      upcoming: teamFixturesFrom(fixtures, p.team, targetGw, 6).slice(0, 4).map((fx) => ({
+        gw: fx.gw,
+        opp: teamById.get(fx.opponent)?.short_name || '',
+        home: fx.home,
+        difficulty: fx.difficulty,
+      })),
     };
   });
 }

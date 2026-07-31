@@ -220,11 +220,14 @@ button.ghost {
 .player-chip {
   position: relative;
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
-  padding: 8px 10px; width: 128px; flex: 0 0 auto; text-align: center; min-height: 56px;
-  display: flex; flex-direction: column; justify-content: center;
+  padding: 7px 8px; width: 128px; flex: 0 0 auto; text-align: center; height: 80px; overflow: hidden;
+  display: flex; flex-direction: column; justify-content: center; gap: 2px;
 }
-.player-chip .pc-name { font-weight: 700; font-size: .9rem; }
-.player-chip .pc-meta { color: var(--text-dim); font-size: .78rem; margin-top: 2px; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.player-chip .pc-name { font-weight: 700; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player-chip .pc-meta { color: var(--text-dim); font-size: .78rem; display: flex; justify-content: center; gap: 8px; flex-wrap: nowrap; white-space: nowrap; }
+/* Super-small next-fixtures ticker under the price */
+.pc-fixtures { display: flex; justify-content: center; gap: 2px; flex-wrap: nowrap; overflow: hidden; }
+.pc-fx { font-size: .55rem; padding: 0 3px; border-radius: 4px; line-height: 1.5; letter-spacing: 0; }
 .player-chip.bench { opacity: .72; }
 .player-chip.blank { opacity: .45; }
 .player-chip.cap .pc-name::after { content: ' Ⓒ'; color: var(--pl-magenta); }

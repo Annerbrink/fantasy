@@ -447,10 +447,14 @@ function playerChip(p, { bench = false, captain = false, gwPoints = null, captai
   const nailed = p.nailed ? `<span class="nailed-dot" title="Nailed-on starter (${(p.minutes || 0).toLocaleString()} mins)">●</span>` : '';
   const ptsTitle = doubled ? ` title="${gwPoints} × ${captainMult} (captain)"` : (perGw ? ` title="${p.projHorizon} pts over the horizon"` : '');
   const capX2 = doubled ? ` <small class="cap-x2">©×${captainMult}</small>` : '';
+  const fixtures = (p.upcoming || []).length
+    ? `<div class="pc-fixtures">${p.upcoming.map((f) => `<span class="badge-fdr ${fdrClass(f.difficulty)} pc-fx" title="GW${f.gw} ${f.home ? 'vs' : '@'} ${esc(f.opp)} (FDR ${f.difficulty})">${esc(f.opp)}</span>`).join('')}</div>`
+    : '';
   return `<div class="${cls}" data-player-id="${p.id}" data-player-name="${esc(p.name)}" title="See ${esc(p.name)}'s fixtures">
     <button class="pc-replace" data-replace-id="${p.id}" title="Replace ${esc(p.name)}" aria-label="Replace ${esc(p.name)}">⇄</button>
     <div class="pc-name">${esc(p.name)}${nailed}${p.onPens ? ' <small class="muted">(P)</small>' : ''}</div>
     <div class="pc-meta"><span>${esc(p.team)} · ${money(p.price)}</span><span${ptsTitle}>${shown} pts${capX2}</span></div>
+    ${fixtures}
   </div>`;
 }
 
