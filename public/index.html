@@ -6,21 +6,23 @@
   <title>FPL Assistant</title>
   <meta name="description" content="Data-driven Fantasy Premier League transfer, captain, chip and mini-league advice." />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/bold/style.css" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <header class="app-header">
     <div class="wrap">
-      <h1>⚽ FPL Assistant <span class="badge">beta</span></h1>
+      <h1><i class="ph-bold ph-soccer-ball"></i> FPL Assistant <span class="badge">beta</span></h1>
       <p class="sub" id="league-sub">Your data-driven edge to win the mini-league.</p>
       <nav class="tabs" id="tabs">
-        <button class="tab active" data-tab="dashboard">Dashboard</button>
-        <button class="tab" data-tab="transfers">Transfers</button>
-        <button class="tab" data-tab="captain">Captain &amp; Chips</button>
-        <button class="tab" data-tab="rivals">Rivals</button>
-        <button class="tab" data-tab="draft">Draft</button>
-        <button class="tab" data-tab="stats">Stats</button>
-        <button class="tab" data-tab="setup">Setup</button>
+        <button class="tab active" data-tab="dashboard"><i class="ph ph-squares-four"></i> Dashboard</button>
+        <button class="tab" data-tab="transfers"><i class="ph ph-arrows-left-right"></i> Transfers</button>
+        <button class="tab" data-tab="captain"><i class="ph ph-crown-simple"></i> Captain &amp; Chips</button>
+        <button class="tab" data-tab="rivals"><i class="ph ph-users-three"></i> Rivals</button>
+        <button class="tab" data-tab="draft"><i class="ph ph-clipboard-text"></i> Draft</button>
+        <button class="tab" data-tab="stats"><i class="ph ph-chart-bar"></i> Stats</button>
+        <button class="tab" data-tab="setup"><i class="ph ph-gear"></i> Setup</button>
       </nav>
     </div>
   </header>
@@ -31,7 +33,7 @@
       <div id="dash-content"></div>
       <div class="card ai-panel" id="ai-card">
         <div class="ai-head">
-          <h2>🧠 AI Coach</h2>
+          <h2><i class="ph ph-brain"></i> AI Coach</h2>
           <button class="primary" id="ai-run">Generate game plan</button>
         </div>
         <p class="hint">A weekly game plan written from the numbers below. Click to generate — it won't run on its own.</p>
@@ -81,15 +83,15 @@
             </label>
           </label>
           <button class="primary" id="draft-build">Build optimal</button>
-          <button class="ghost" id="draft-random">🎲 Randomize</button>
+          <button class="ghost" id="draft-random"><i class="ph ph-shuffle"></i> Randomize</button>
         </div>
         <div class="lock-row">
           <label class="inline-field" style="flex:1; min-width:200px">
             <span>Lock in must-have players</span>
             <input type="text" id="lock-input" list="player-list" placeholder="Type a player name, then Lock…" autocomplete="off" />
           </label>
-          <button class="ghost" id="lock-add">＋ Lock</button>
-          <button class="ghost" id="load-team" title="Lock in your current FPL squad">👥 Load my team</button>
+          <button class="ghost" id="lock-add"><i class="ph ph-plus"></i> Lock</button>
+          <button class="ghost" id="load-team" title="Lock in your current FPL squad"><i class="ph ph-users"></i> Load my team</button>
           <button class="ghost" id="lock-clear" title="Remove all locked players">Clear</button>
           <datalist id="player-list"></datalist>
         </div>

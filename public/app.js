@@ -40,8 +40,19 @@ document.querySelectorAll('.tab').forEach((btn) => {
     document.querySelectorAll('.tab-panel').forEach((p) => p.classList.add('hidden'));
     btn.classList.add('active');
     $(`#tab-${btn.dataset.tab}`).classList.remove('hidden');
+    try { localStorage.setItem('fpl_tab', btn.dataset.tab); } catch { /* storage blocked */ }
   });
 });
+
+// Restore the tab that was open before a refresh (once all tab listeners, incl. the draft/stats
+// lazy-loaders below, are attached — so restoring also triggers their content to load).
+function restoreOpenTab() {
+  let saved = null;
+  try { saved = localStorage.getItem('fpl_tab'); } catch { /* ignore */ }
+  if (!saved || saved === 'dashboard') return;
+  const btn = document.querySelector(`.tab[data-tab="${saved}"]`);
+  if (btn) btn.click();
+}
 
 // ---- Setup --------------------------------------------------------------------------
 $('#input-team').value = localStorage.getItem('fpl_team') || DEFAULTS.teamId;
@@ -70,7 +81,7 @@ function playerLink(id, name) {
 
 // A small "lock into draft" button for table rows.
 function lockBtn(p) {
-  return `<button class="mini-lock" title="Lock into your draft" data-id="${p.id}" data-name="${esc(p.name)}" data-team="${esc(p.team)}" data-pos="${esc(p.position)}" data-price="${p.price}">🔒</button>`;
+  return `<button class="mini-lock" title="Lock into your draft" data-id="${p.id}" data-name="${esc(p.name)}" data-team="${esc(p.team)}" data-pos="${esc(p.position)}" data-price="${p.price}"><i class="ph ph-lock-simple"></i></button>`;
 }
 
 function gainPill(net) {
@@ -211,9 +222,9 @@ function priceWatchCard(a) {
   return `
     <div class="card">
       <h2>Price watch</h2>
-      <p class="hint">📈 Predicted to <strong>rise</strong> soon — buy now to gain team value:</p>
+      <p class="hint"><i class="ph ph-trend-up"></i> Predicted to <strong>rise</strong> soon — buy now to gain team value:</p>
       ${table((pw.risers || []).slice(0, 6), 'No strong risers right now.')}
-      <p class="hint" style="margin-top:12px">📉 Predicted to <strong>fall</strong> — sell before the drop:</p>
+      <p class="hint" style="margin-top:12px"><i class="ph ph-trend-down"></i> Predicted to <strong>fall</strong> — sell before the drop:</p>
       ${table((pw.fallers || []).slice(0, 6), 'No strong fallers right now.')}
       <p class="hint" style="margin-top:8px"><small>Predictions from transfer momentum — not guaranteed. "today" = a change already applied this day.</small></p>
     </div>`;
@@ -273,7 +284,7 @@ function chipPlannerCard(a) {
     const rev = reviewBySlot.get(s.slot);
     let verdict = '';
     if (savedGw != null && rev) {
-      verdict = `<span class="chip-badge ${rev.ok ? 'ok' : 'warn'}">${rev.ok ? '✓' : '⚠'}</span> <small class="${rev.ok ? 'muted' : 'urgent-text'}">${esc(rev.note)}</small>`;
+      verdict = `<span class="chip-badge ${rev.ok ? 'ok' : 'warn'}"><i class="ph-bold ${rev.ok ? 'ph-check' : 'ph-warning'}"></i></span> <small class="${rev.ok ? 'muted' : 'urgent-text'}">${esc(rev.note)}</small>`;
     } else if (sug) {
       verdict = `<small class="muted">Suggested GW${sug.gw} — ${esc(sug.reason)}</small>`;
     } else {
@@ -295,14 +306,14 @@ function chipPlannerCard(a) {
 
   const planned = Object.keys(saved).length;
   const influence = planned
-    ? `<p class="chip-influence-line">♟️ Your plan is shaping transfer suggestions and drafts below.</p>`
+    ? `<p class="chip-influence-line"><i class="ph ph-strategy"></i> Your plan is shaping transfer suggestions and drafts below.</p>`
     : `<p class="hint">Set your intended chip weeks and the model plans transfers &amp; drafts around them — no −4 hits before a Wildcard, a strong bench for a Bench Boost week.</p>`;
 
   return `<div class="card" id="chip-plan-card">
     <div class="chip-plan-head">
-      <h2>♟️ Chip strategy</h2>
+      <h2><i class="ph ph-strategy"></i> Chip strategy</h2>
       <div class="chip-plan-actions">
-        <button class="ghost" id="chip-suggest">✨ Use suggested plan</button>
+        <button class="ghost" id="chip-suggest"><i class="ph ph-sparkle"></i> Use suggested plan</button>
         <button class="ghost" id="chip-clear" title="Remove your planned weeks">Clear</button>
       </div>
     </div>
@@ -343,7 +354,7 @@ function renderCaptain(a) {
         <div class="captain-box"><div class="role">Vice</div><div class="name">${esc(c.vice.name)}</div><div class="muted">${esc(c.vice.team)}</div></div>
         ${c.differential ? `<div class="captain-box"><div class="role">Differential</div><div class="name">${esc(c.differential.name)}</div><div class="muted">${c.differential.selectedBy}% owned</div></div>` : ''}
       </div>
-      ${a.tripleCaptain ? `<p class="hint" style="margin-top:12px">🔺 <strong>Triple Captain target:</strong> ${esc(a.tripleCaptain.name)} in <strong>GW${a.tripleCaptain.gw}</strong> ${a.tripleCaptain.home ? 'at home to' : 'away at'} ${esc(a.tripleCaptain.opponent)}${a.tripleCaptain.promoted ? ' (newly-promoted/weak side)' : ''} — proj ${a.tripleCaptain.points ?? '—'} pts.</p>` : ''}
+      ${a.tripleCaptain ? `<p class="hint" style="margin-top:12px"><i class="ph ph-crown-simple"></i> <strong>Triple Captain target:</strong> ${esc(a.tripleCaptain.name)} in <strong>GW${a.tripleCaptain.gw}</strong> ${a.tripleCaptain.home ? 'at home to' : 'away at'} ${esc(a.tripleCaptain.opponent)}${a.tripleCaptain.promoted ? ' (newly-promoted/weak side)' : ''} — proj ${a.tripleCaptain.points ?? '—'} pts.</p>` : ''}
     </div>` : '';
 
   const chipBadge = (ch) => {
@@ -427,10 +438,10 @@ function rankGainCard(r) {
     <tbody>${rows.map(row).join('')}</tbody></table></div>`;
   return `
     <div class="card">
-      <h2>🎯 Rank-gain targets</h2>
+      <h2><i class="ph ph-target"></i> Rank-gain targets</h2>
       <p class="hint">Best differentials to climb <em>this</em> league — strong projection that few rivals own. Rank-gain = projected points × share of rivals who don't own them.</p>
       ${targets.length ? table(targets) : '<p class="muted">No standout differentials right now.</p>'}
-      ${risks.length ? `<p class="hint" style="margin-top:12px">⚠ Template you're missing (cover these or risk losing rank if they haul):</p>${table(risks)}` : ''}
+      ${risks.length ? `<p class="hint" style="margin-top:12px"><i class="ph ph-warning"></i> Template you're missing (cover these or risk losing rank if they haul):</p>${table(risks)}` : ''}
     </div>`;
 }
 
@@ -451,7 +462,7 @@ function playerChip(p, { bench = false, captain = false, gwPoints = null, captai
     ? `<div class="pc-fixtures">${p.upcoming.map((f) => `<span class="badge-fdr ${fdrClass(f.difficulty)} pc-fx" title="GW${f.gw} ${f.home ? 'vs' : '@'} ${esc(f.opp)} (FDR ${f.difficulty})">${esc(f.opp)}</span>`).join('')}</div>`
     : '';
   return `<div class="${cls}" data-player-id="${p.id}" data-player-name="${esc(p.name)}" title="See ${esc(p.name)}'s fixtures">
-    <button class="pc-replace" data-replace-id="${p.id}" title="Replace ${esc(p.name)}" aria-label="Replace ${esc(p.name)}">⇄</button>
+    <button class="pc-replace" data-replace-id="${p.id}" title="Replace ${esc(p.name)}" aria-label="Replace ${esc(p.name)}"><i class="ph ph-swap"></i></button>
     <div class="pc-name">${esc(p.name)}${nailed}${p.onPens ? ' <small class="muted">(P)</small>' : ''}</div>
     <div class="pc-meta"><span>${esc(p.team)} · ${money(p.price)}</span><span${ptsTitle}>${shown} pts${capX2}</span></div>
     ${fixtures}
@@ -494,11 +505,11 @@ function renderDraft(d) {
   const xiGwTotal = selected ? Math.round(selected.points * 10) / 10 : null;
   const stepper = series.length
     ? `<div class="gw-stepper">
-        <button class="ghost gw-nav" id="draft-gw-prev" ${draftGwIndex <= 0 ? 'disabled' : ''} aria-label="Previous gameweek">◀</button>
-        <div class="gw-stepper-label"><strong>GW ${selectedGw}</strong> · <span class="gw-total">${xiGwTotal} pts</span> projected${selected && selected.benchBoost ? ' squad 🪑 (Bench Boost)' : ' XI'}
-          <div class="muted">© ${esc(gwCaptainName)} ${selected && selected.tripleCaptain ? 'tripled 🔺 (Triple Captain)' : 'doubled'} · GW ${draftGwIndex + 1} of ${series.length} · use ◀ ▶ or arrow keys</div>
+        <button class="ghost gw-nav" id="draft-gw-prev" ${draftGwIndex <= 0 ? 'disabled' : ''} aria-label="Previous gameweek"><i class="ph-bold ph-caret-left"></i></button>
+        <div class="gw-stepper-label"><strong>GW ${selectedGw}</strong> · <span class="gw-total">${xiGwTotal} pts</span> projected${selected && selected.benchBoost ? ' squad <i class="ph ph-armchair"></i> (Bench Boost)' : ' XI'}
+          <div class="muted">© ${esc(gwCaptainName)} ${selected && selected.tripleCaptain ? 'tripled <i class="ph ph-crown-simple"></i> (Triple Captain)' : 'doubled'} · GW ${draftGwIndex + 1} of ${series.length} · use <i class="ph ph-caret-left"></i> <i class="ph ph-caret-right"></i> or arrow keys</div>
         </div>
-        <button class="ghost gw-nav" id="draft-gw-next" ${draftGwIndex >= series.length - 1 ? 'disabled' : ''} aria-label="Next gameweek">▶</button>
+        <button class="ghost gw-nav" id="draft-gw-next" ${draftGwIndex >= series.length - 1 ? 'disabled' : ''} aria-label="Next gameweek"><i class="ph-bold ph-caret-right"></i></button>
       </div>`
     : '';
 
@@ -509,9 +520,9 @@ function renderDraft(d) {
         <div class="rating-score"><span class="pill ${ratingColor}">${d.rating}/100</span> <strong>${esc(d.grade)}</strong></div>
         <div class="muted">${d.isAlternative ? 'vs the optimal squad’s projection' : 'benchmark squad (100)'} · rated on ${esc(d.objectiveLabel || 'XI + captain')} · avg FDR ${d.ratingBreakdown.avgFixtureDifficulty ?? '—'} · value ${d.ratingBreakdown.value} pts/£m</div>
       </div>
-      ${d.benchBoostGw != null ? `<p class="hint">🪑 <strong>Bench Boost planned for GW${d.benchBoostGw}:</strong> the bench scores on that one week only, so the squad is built with a bench strong enough for it — every other week only your XI counts.</p>` : ''}
-      ${d.tripleCaptainGw != null ? `<p class="hint">🔺 <strong>Triple Captain planned for GW${d.tripleCaptainGw}:</strong> your captain scores triple that week — reflected in GW${d.tripleCaptainGw}'s projected points.</p>` : ''}
-      ${d.edited ? `<div class="lock-note">✏️ Edited squad — rating shown vs the optimal. Use <strong>Build optimal</strong> to reset.</div>` : lockNote(d)}
+      ${d.benchBoostGw != null ? `<p class="hint"><i class="ph ph-armchair"></i> <strong>Bench Boost planned for GW${d.benchBoostGw}:</strong> the bench scores on that one week only, so the squad is built with a bench strong enough for it — every other week only your XI counts.</p>` : ''}
+      ${d.tripleCaptainGw != null ? `<p class="hint"><i class="ph ph-crown-simple"></i> <strong>Triple Captain planned for GW${d.tripleCaptainGw}:</strong> your captain scores triple that week — reflected in GW${d.tripleCaptainGw}'s projected points.</p>` : ''}
+      ${d.edited ? `<div class="lock-note"><i class="ph ph-pencil-simple"></i> Edited squad — rating shown vs the optimal. Use <strong>Build optimal</strong> to reset.</div>` : lockNote(d)}
       <div class="grid" style="margin-bottom:14px">
         ${statTile('Total cost', money(d.totalCost))}
         ${statTile('In the bank', money(d.remaining))}
@@ -529,7 +540,7 @@ function renderDraft(d) {
       <div class="pitch-row">${d.bench.map((p) => playerChip(p, { bench: true, gwPoints: gwPointsFor(p) })).join('')}</div>
     </div>
     ${suggestedTransferCard(d)}
-    ${pointsChart(series, { heading: 'Squad projected points', subtitle: 'Starting XI projection per gameweek over your chosen horizon. Tap ◀ ▶ above to focus a week.', selectedGw })}`;
+    ${pointsChart(series, { heading: 'Squad projected points', subtitle: 'Starting XI projection per gameweek over your chosen horizon. Tap the arrows above to focus a week.', selectedGw })}`;
 
   // Wire the stepper (re-renders the same draft focused on the new GW).
   $('#draft-gw-prev')?.addEventListener('click', () => stepDraftGw(-1));
@@ -542,7 +553,7 @@ function renderDraft(d) {
 
 // The single best free transfer for the current squad, with the FT / -4 rule spelled out.
 function suggestedTransferCard(d) {
-  const rule = `<p class="hint" style="margin:0 0 8px">💡 You get <strong>1 free transfer</strong> each gameweek — any extra transfer costs <strong>−4 points</strong>.</p>`;
+  const rule = `<p class="hint" style="margin:0 0 8px"><i class="ph ph-lightbulb"></i> You get <strong>1 free transfer</strong> each gameweek — any extra transfer costs <strong>−4 points</strong>.</p>`;
   const t = d.topTransfer;
   if (!t) {
     return `<div class="card"><h2>Suggested free transfer</h2>${rule}<p class="muted">No single transfer improves this squad — it's already optimised for your budget.</p></div>`;
@@ -552,7 +563,7 @@ function suggestedTransferCard(d) {
     ${rule}
     <div class="move">
       <span class="pill neg">OUT</span> ${playerLink(t.out.id, t.out.name)} <small class="muted">${esc(t.out.team)} · ${money(t.out.price)}</small>
-      <span class="arrow">→</span>
+      <span class="arrow"><i class="ph-bold ph-arrow-right"></i></span>
       <span class="pill pos">IN</span> ${playerLink(t.in.id, t.in.name)} <small class="muted">${esc(t.in.team)} · ${money(t.in.price)}</small>
       <button class="primary xfer-apply" data-out="${t.out.id}" data-in="${t.in.id}">Apply (free)</button>
     </div>
@@ -641,7 +652,7 @@ function openModal(ariaLabel) {
   const el = document.createElement('div');
   el.className = 'modal-backdrop';
   el.innerHTML = `<div class="player-modal" role="dialog" aria-modal="true" aria-label="${esc(ariaLabel)}">
-    <button class="modal-close" aria-label="Close">✕</button>
+    <button class="modal-close" aria-label="Close"><i class="ph ph-x"></i></button>
     <div class="modal-body"><p class="empty"><span class="spinner"></span> Loading…</p></div>
   </div>`;
   document.body.appendChild(el);
@@ -730,6 +741,23 @@ async function applyReplace(outId, inId) {
 }
 
 // Rebuild the draft from an exact 15-man id list (all locked), keeping the selected gameweek.
+// Persist / restore a hand-edited draft squad so your transfers survive a refresh.
+const DRAFT_KEY = 'fpl_draft_squad';
+function saveDraftSquad(d) {
+  try {
+    const ids = [...(d.startingXI || []), ...(d.bench || [])].map((p) => p.id);
+    if (ids.length !== 15) return;
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      ids, budget: $('#draft-budget')?.value.trim() || '100', horizon: d.horizon,
+      benchBoostGw: d.benchBoostGw ?? null, tripleCaptainGw: d.tripleCaptainGw ?? null,
+    }));
+  } catch { /* storage blocked */ }
+}
+function clearDraftSquad() { try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ } }
+function savedDraftSquad() {
+  try { const s = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); return s?.ids?.length === 15 ? s : null; } catch { return null; }
+}
+
 async function rebuildFromIds(ids) {
   $('#draft-content').innerHTML = `<div class="card"><p class="empty"><span class="spinner"></span> Updating your squad…</p></div>`;
   const horizon = $('#draft-horizon')?.value || lastDraft?.horizon || 5;
@@ -742,6 +770,7 @@ async function rebuildFromIds(ids) {
     data.edited = true; // mark as a hand-edited squad for the UI note
     lastDraft = data;
     renderDraft(lastDraft);
+    saveDraftSquad(data); // remember the transfers across refresh
   } catch (e) {
     $('#draft-content').innerHTML = `<div class="card"><div class="error-box">Couldn't update the squad: ${esc(e.message)}</div></div>`;
   }
@@ -779,7 +808,7 @@ function lockPlayerObj(p, { notify = false } = {}) {
   if (lockedPlayers.length >= 15) { if (notify) toast('Squad is full (15 locked)'); return; }
   lockedPlayers.push({ id: p.id, name: p.name, team: p.team, position: p.position, price: p.price });
   renderLockedChips();
-  if (notify) toast(`🔒 Locked ${p.name} — build in the Draft tab`);
+  if (notify) toast(`Locked ${p.name} — build in the Draft tab`);
 }
 
 function addLock() {
@@ -823,8 +852,8 @@ function lockNote(d) {
   const exc = d.lockedExcluded || [];
   if (!inc.length && !exc.length) return '';
   let html = '';
-  if (inc.length) html += `<div class="lock-note">🔒 Locked in: <strong>${inc.map((p) => esc(p.name)).join(', ')}</strong> — squad built around them.</div>`;
-  if (exc.length) html += `<div class="lock-note lock-warn">⚠ Couldn't lock: ${exc.map((p) => `${esc(p.name || 'player')} (${esc(p.reason)})`).join(', ')}. Adjust budget or picks.</div>`;
+  if (inc.length) html += `<div class="lock-note"><i class="ph ph-lock-simple"></i> Locked in: <strong>${inc.map((p) => esc(p.name)).join(', ')}</strong> — squad built around them.</div>`;
+  if (exc.length) html += `<div class="lock-note lock-warn"><i class="ph ph-warning"></i> Couldn't lock: ${exc.map((p) => `${esc(p.name || 'player')} (${esc(p.reason)})`).join(', ')}. Adjust budget or picks.</div>`;
   return html;
 }
 
@@ -861,6 +890,7 @@ async function buildDraft(randomize = false) {
     lastDraft = await res.json();
     draftGwIndex = 0; // a fresh build starts on the first gameweek
     renderDraft(lastDraft);
+    clearDraftSquad(); // a fresh optimal/random build resets any remembered edits
   } catch (e) {
     $('#draft-content').innerHTML = `<div class="card"><div class="error-box">Couldn't build the squad: ${esc(e.message)}</div></div>`;
   }
@@ -895,10 +925,22 @@ $('#load-team').addEventListener('click', loadMyTeam);
 $('#draft-build').addEventListener('click', () => buildDraft(false));
 $('#draft-random').addEventListener('click', () => buildDraft(true));
 // Build once the first time the Draft tab is opened, and load the player index for locking.
+// If a hand-edited squad was remembered from a previous session, restore that instead.
 let draftLoaded = false;
 document.querySelector('.tab[data-tab="draft"]').addEventListener('click', () => {
   loadPlayers();
-  if (!draftLoaded) { draftLoaded = true; buildDraft(false); }
+  if (!draftLoaded) {
+    draftLoaded = true;
+    const saved = savedDraftSquad();
+    if (saved) {
+      if ($('#draft-budget')) $('#draft-budget').value = saved.budget || '100';
+      if ($('#draft-horizon') && saved.horizon) $('#draft-horizon').value = String(saved.horizon);
+      lastDraft = { horizon: saved.horizon, benchBoostGw: saved.benchBoostGw, tripleCaptainGw: saved.tripleCaptainGw };
+      rebuildFromIds(saved.ids);
+    } else {
+      buildDraft(false);
+    }
+  }
 });
 
 // ---- Stats (advanced Opta-derived metrics) ------------------------------------------
@@ -930,7 +972,7 @@ async function loadStats(metric) {
 
     content.innerHTML = `<div class="card">
       <h2>${esc(data.label)} — top players</h2>
-      <p class="hint">🔒 lock a player straight into your draft.</p>
+      <p class="hint"><i class="ph ph-lock-simple"></i> lock a player straight into your draft.</p>
       <div class="table-scroll"><table>
         <thead><tr><th class="num">#</th><th>Player</th><th class="num">Price</th><th class="num">${esc(data.label)}</th><th class="num">Mins</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
@@ -961,17 +1003,17 @@ async function loadPlan() {
     }
     const rows = p.roadmap.map((m) => `<tr>
       <td><strong>GW ${p.targetGw + m.weekOffset}</strong>${m.weekOffset === 0 ? ' <span class="pill pos">now</span>' : ''}</td>
-      <td class="move"><span class="pill neg">OUT</span> ${esc(m.out.name)} <span class="arrow">→</span> <span class="pill pos">IN</span> ${esc(m.in.name)} <small class="muted">${esc(m.in.team)}</small></td>
+      <td class="move"><span class="pill neg">OUT</span> ${esc(m.out.name)} <span class="arrow"><i class="ph-bold ph-arrow-right"></i></span> <span class="pill pos">IN</span> ${esc(m.in.name)} <small class="muted">${esc(m.in.team)}</small></td>
       <td class="num">+${m.realizedGain} pts</td>
     </tr>`).join('');
     const hit = (p.hitWorthy || []).length
-      ? `<p class="hint" style="margin-top:10px">💥 Worth a −4 hit now: ${p.hitWorthy.map((h) => `${esc(h.out.name)}→${esc(h.in.name)} (+${h.nowGain})`).join(', ')}</p>`
+      ? `<p class="hint" style="margin-top:10px"><i class="ph ph-fire"></i> Worth a −4 hit now: ${p.hitWorthy.map((h) => `${esc(h.out.name)}→${esc(h.in.name)} (+${h.nowGain})`).join(', ')}</p>`
       : '';
     const chipNotes = (p.chipNotes || []).length
-      ? `<div class="chip-influence">${p.chipNotes.map((n) => `<div>♟️ ${esc(n)}</div>`).join('')}</div>`
+      ? `<div class="chip-influence">${p.chipNotes.map((n) => `<div><i class="ph ph-strategy"></i> ${esc(n)}</div>`).join('')}</div>`
       : '';
     el.innerHTML = `<div class="card">
-      <h2>📅 Transfer plan <span class="gw">· ${p.freeTransfers} FT · ${money(p.bank)} bank · next ${p.horizon} GWs</span></h2>
+      <h2><i class="ph ph-calendar-dots"></i> Transfer plan <span class="gw">· ${p.freeTransfers} FT · ${money(p.bank)} bank · next ${p.horizon} GWs</span></h2>
       <p class="hint">One free transfer per week (no hits), best moves first so you bank the gains for longer.</p>
       ${chipNotes}
       <div class="table-scroll"><table>
@@ -991,7 +1033,7 @@ async function refreshUsage() {
     const neuron = u.neuronsEstimate != null
       ? ` · ~<b>${u.neuronsEstimate.toLocaleString()}</b>/${u.freeNeuronsPerDay.toLocaleString()} Neurons`
       : ` · free tier: ${u.freeNeuronsPerDay.toLocaleString()} Neurons/day`;
-    badge.innerHTML = `📊 AI today: <b>${u.calls}</b> plan${u.calls === 1 ? '' : 's'} · <b>${(u.totalTokens || 0).toLocaleString()}</b> tokens${neuron} · resets ${u.resetsAt}`;
+    badge.innerHTML = `<i class="ph ph-chart-bar"></i> AI today: <b>${u.calls}</b> plan${u.calls === 1 ? '' : 's'} · <b>${(u.totalTokens || 0).toLocaleString()}</b> tokens${neuron} · resets ${u.resetsAt}`;
     badge.classList.remove('hidden');
   } catch {
     badge.classList.add('hidden');
@@ -1113,3 +1155,4 @@ async function loadCoach() {
 $('#ai-run')?.addEventListener('click', loadCoach);
 
 load();
+restoreOpenTab(); // re-open whichever tab was active before the refresh
